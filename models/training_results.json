@@ -1,0 +1,26 @@
+{
+  "XGBoost": {
+    "model": "XGBoost",
+    "MAE": 8.298,
+    "RMSE": 13.484,
+    "R2": 0.9697,
+    "MAPE_pct": 8.68,
+    "accuracy_pct": 91.32
+  },
+  "LightGBM": {
+    "model": "LightGBM",
+    "MAE": 7.825,
+    "RMSE": 12.348,
+    "R2": 0.9746,
+    "MAPE_pct": 8.36,
+    "accuracy_pct": 91.64
+  },
+  "RandomForest": {
+    "model": "RandomForest",
+    "MAE": 16.105,
+    "RMSE": 25.404,
+    "R2": 0.8924,
+    "MAPE_pct": 18.66,
+    "accuracy_pct": 81.34
+  }
+}

@@ -1,3 +1,8 @@
+"""
+Game Performance Copilot — Full Dashboard
+Phase 1 + Phase 2: Telemetry + ML FPS Prediction + Recommendations
+"""
+
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
@@ -5,15 +10,20 @@ import time
 import sys
 import os
 
-# Add project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 from src.telemetry.collector import TelemetryCollector
 from src.database.db_manager import DatabaseManager
 from src.diagnostics.engine import DiagnosticsEngine
+from src.ml.predictor import FPSPredictor
+from src.ml.recommendation_engine import RecommendationEngine
+from src.ml.dataset_generator import (
+    GAME_PROFILES, PRESET_CONFIG,
+    RESOLUTION_CONFIG, UPSCALING_BOOST
+)
 
 # ─────────────────────────────────────────────────────────────
-# PAGE CONFIGURATION
+# PAGE CONFIG
 # ─────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Game Performance Copilot",
@@ -31,28 +41,38 @@ st.markdown("""
         border-radius: 10px;
         padding: 12px;
     }
+    .rec-card {
+        background-color: #1e2130;
+        border: 1px solid #2d3250;
+        border-radius: 10px;
+        padding: 16px;
+        margin-bottom: 8px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────
-# INITIALIZE (cached so they only load once)
+# INITIALIZE ALL COMPONENTS (cached — load once)
 # ─────────────────────────────────────────────────────────────
 @st.cache_resource
 def load_components():
     collector   = TelemetryCollector()
     db          = DatabaseManager()
     diagnostics = DiagnosticsEngine()
-    return collector, db, diagnostics
+    predictor   = FPSPredictor()
+    rec_engine  = RecommendationEngine(predictor)
+    return collector, db, diagnostics, predictor, rec_engine
 
-collector, db, diagnostics_engine = load_components()
+collector, db, diagnostics_engine, predictor, rec_engine = load_components()
 
 # ─────────────────────────────────────────────────────────────
-# SIDEBAR — YOUR SYSTEM INFO
+# SIDEBAR
 # ─────────────────────────────────────────────────────────────
 with st.sidebar:
     st.title("🎮 Game Performance Copilot")
     st.markdown("---")
 
+    # ── System Info ──────────────────────────────────────────
     st.markdown("### 💻 Your System")
     st.markdown("""
     | Component | Spec |
@@ -65,48 +85,101 @@ with st.sidebar:
     """)
 
     st.markdown("---")
-    refresh_rate = st.slider("⏱️ Refresh Rate (sec)", 1, 10, 2)
-    save_to_db   = st.checkbox("💾 Save to Database", value=True)
+
+    # ── Game Settings ─────────────────────────────────────────
+    st.markdown("### 🎮 Game Settings")
+    st.caption("Set these to match your current game configuration")
+
+    game_genre = st.selectbox(
+        "Game Genre",
+        options=list(GAME_PROFILES.keys()),
+        index=0,
+        format_func=lambda x: GAME_PROFILES[x]["description"]
+    )
+
+    resolution = st.selectbox(
+        "Resolution",
+        options=list(RESOLUTION_CONFIG.keys()),
+        index=1   # Default: 1080p
+    )
+
+    preset = st.selectbox(
+        "Quality Preset",
+        options=list(PRESET_CONFIG.keys()),
+        index=2   # Default: high
+    )
+
+    ray_tracing = st.checkbox("🌟 Ray Tracing Enabled", value=False)
+
+    upscaling = st.selectbox(
+        "Upscaling / Anti-Aliasing",
+        options=list(UPSCALING_BOOST.keys()),
+        index=0   # Default: none
+    )
+
     st.markdown("---")
 
-    # Database record count
+    # ── Dashboard Controls ────────────────────────────────────
+    refresh_rate = st.slider("⏱️ Refresh Rate (sec)", 1, 10, 2)
+    save_to_db   = st.checkbox("💾 Save to Database", value=True)
+
+    st.markdown("---")
+
+    # ── Stats ─────────────────────────────────────────────────
     try:
-        total_records = db.get_total_records()
-        st.metric("📊 Records Collected", f"{total_records:,}")
+        st.metric("📊 Records Collected", f"{db.get_total_records():,}")
     except Exception:
         pass
 
+    # ── ML Model Status ───────────────────────────────────────
     st.markdown("---")
-    st.caption("Phase 1: Telemetry + Diagnostics")
-    st.caption("Built with Python + Streamlit")
+    if predictor.is_loaded:
+        st.success(f"✅ ML Model Active\n\n**{predictor.model_name}**")
+    else:
+        st.error("❌ No model loaded\n\nRun: `python -m src.ml.trainer`")
+
+    st.markdown("---")
+    st.caption("Phase 1+2: Telemetry + ML")
+    st.caption("Built with Python · Streamlit · LightGBM")
 
 # ─────────────────────────────────────────────────────────────
 # MAIN HEADER
 # ─────────────────────────────────────────────────────────────
 st.title("🎮 Game Performance Copilot")
-st.markdown("**Real-Time AI Hardware Monitoring & Bottleneck Diagnostics**")
+st.markdown("**Real-Time AI Monitoring  ·  ML FPS Prediction  ·  Optimization Recommendations**")
 st.markdown("---")
 
 # ─────────────────────────────────────────────────────────────
-# LIVE MONITORING LOOP
+# LIVE LOOP
 # ─────────────────────────────────────────────────────────────
 placeholder = st.empty()
 
 while True:
-    # Collect metrics
+
+    # ── Collect all metrics ───────────────────────────────────
     metrics = collector.collect_all()
 
-    # Save to database
     if save_to_db:
         try:
             db.insert_telemetry(metrics)
-        except Exception as e:
+        except Exception:
             pass
 
-    # Run diagnostics
+    # ── Run diagnostics ───────────────────────────────────────
     issues = diagnostics_engine.analyze(metrics)
 
-    # Extract values
+    # ── Run ML prediction ─────────────────────────────────────
+    prediction = predictor.predict(
+        metrics, game_genre, resolution, preset, ray_tracing, upscaling
+    )
+
+    # ── Generate recommendations ──────────────────────────────
+    recs = rec_engine.generate(
+        metrics, game_genre, resolution, preset,
+        ray_tracing, upscaling, issues
+    )
+
+    # ── Unpack metric values ──────────────────────────────────
     gpu  = metrics.get("gpu", {})
     cpu  = metrics.get("cpu", {})
     mem  = metrics.get("memory", {})
@@ -120,82 +193,76 @@ while True:
     gpu_power = gpu.get("gpu_power_watts")
 
     cpu_util  = cpu.get("cpu_utilization") or 0
-    cpu_freq  = cpu.get("cpu_frequency_mhz") or 0
-    cpu_temp  = cpu.get("cpu_temperature")
     per_core  = cpu.get("per_core_utilization") or []
 
     ram_util  = mem.get("ram_utilization") or 0
     ram_used  = mem.get("ram_used_gb") or 0
     ram_avail = mem.get("ram_available_gb") or 0
-    pf_util   = mem.get("page_file_utilization") or 0
 
     with placeholder.container():
 
-        # ── SECTION 1: KEY METRICS ROW ──────────────────────
+        # ════════════════════════════════════════════════════════
+        # SECTION 1 — LIVE HARDWARE METRICS
+        # ════════════════════════════════════════════════════════
         st.subheader("📊 Live Hardware Metrics")
 
         c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
 
         with c1:
-            color = "inverse" if gpu_util > 95 else "normal"
-            st.metric("🖥️ GPU Usage",
-                      f"{gpu_util}%",
+            st.metric("🖥️ GPU Usage", f"{gpu_util}%",
                       delta="MAXED" if gpu_util > 95 else ("High" if gpu_util > 80 else "Normal"),
-                      delta_color=color)
+                      delta_color="inverse" if gpu_util > 95 else "normal")
         with c2:
-            vram_gb = round(vram_used / 1024, 1)
-            st.metric("💾 VRAM",
-                      f"{vram_gb} GB",
+            vram_gb = round(vram_used / 1024, 2)
+            st.metric("💾 VRAM Used", f"{vram_gb} GB",
                       delta="⚠️ Low" if vram_util > 75 else "OK",
                       delta_color="inverse" if vram_util > 75 else "normal")
         with c3:
-            st.metric("🌡️ GPU Temp",
-                      f"{gpu_temp}°C",
+            st.metric("🌡️ GPU Temp", f"{gpu_temp}°C",
                       delta="🔥 HOT" if gpu_temp > 85 else "OK",
                       delta_color="inverse" if gpu_temp > 85 else "normal")
         with c4:
-            st.metric("⚡ GPU Clock",
-                      f"{gpu_clock} MHz")
+            st.metric("⚡ GPU Clock", f"{gpu_clock} MHz")
         with c5:
-            st.metric("⚙️ CPU Usage",
-                      f"{cpu_util}%",
+            st.metric("⚙️ CPU Usage", f"{cpu_util}%",
                       delta="High" if cpu_util > 85 else "Normal",
                       delta_color="inverse" if cpu_util > 85 else "normal")
         with c6:
-            st.metric("🧠 RAM Usage",
-                      f"{ram_used} GB",
+            st.metric("🧠 RAM Used", f"{ram_used} GB",
                       delta=f"{ram_avail:.1f} GB free",
                       delta_color="inverse" if ram_util > 82 else "normal")
         with c7:
-            if gpu_power is not None:
+            if gpu_power:
                 st.metric("🔋 GPU Power", f"{gpu_power}W")
             else:
-                st.metric("🌡️ CPU Temp",
-                          f"{cpu_temp}°C" if cpu_temp else "N/A")
+                st.metric("📊 RAM %", f"{ram_util}%")
 
         st.markdown("---")
 
-        # ── SECTION 2: UTILIZATION GAUGES ───────────────────
+        # ════════════════════════════════════════════════════════
+        # SECTION 2 — UTILIZATION GAUGES
+        # ════════════════════════════════════════════════════════
         st.subheader("📈 Utilization Gauges")
 
-        g1, g2, g3, g4 = st.columns(4)
-
-        def make_gauge(title, value, max_val=100, warn=75, crit=90, unit="%"):
-            bar_color = "#ef4444" if value >= crit else ("#f59e0b" if value >= warn else "#22c55e")
+        def make_gauge(title, value, warn=75, crit=90):
+            color = (
+                "#ef4444" if value >= crit else
+                "#f59e0b" if value >= warn else
+                "#22c55e"
+            )
             fig = go.Figure(go.Indicator(
                 mode="gauge+number",
                 value=round(value, 1),
-                number={"suffix": unit, "font": {"size": 22, "color": "white"}},
+                number={"suffix": "%", "font": {"size": 22, "color": "white"}},
                 title={"text": title, "font": {"size": 13, "color": "white"}},
                 gauge={
-                    "axis": {"range": [0, max_val], "tickcolor": "white"},
-                    "bar": {"color": bar_color},
+                    "axis": {"range": [0, 100], "tickcolor": "white"},
+                    "bar": {"color": color},
                     "bgcolor": "#1e2130",
-                    "bordercolor": "#2d3250",
                     "steps": [
-                        {"range": [0, warn], "color": "#111827"},
-                        {"range": [warn, crit], "color": "#1c1917"},
-                        {"range": [crit, max_val], "color": "#1f0a0a"},
+                        {"range": [0, warn],     "color": "#111827"},
+                        {"range": [warn, crit],  "color": "#1c1917"},
+                        {"range": [crit, 100],   "color": "#1f0a0a"},
                     ],
                     "threshold": {
                         "line": {"color": "#ef4444", "width": 3},
@@ -212,78 +279,234 @@ while True:
             )
             return fig
 
+        g1, g2, g3, g4 = st.columns(4)
         with g1:
-            st.plotly_chart(
-                make_gauge("GPU %", gpu_util, warn=80, crit=95),
-                use_container_width=True
-            )
+            st.plotly_chart(make_gauge("GPU %",  gpu_util,  80, 95), use_container_width=True)
         with g2:
-            st.plotly_chart(
-                make_gauge("VRAM %", vram_util, warn=75, crit=90),
-                use_container_width=True
-            )
+            st.plotly_chart(make_gauge("VRAM %", vram_util, 75, 90), use_container_width=True)
         with g3:
-            st.plotly_chart(
-                make_gauge("CPU %", cpu_util, warn=80, crit=90),
-                use_container_width=True
-            )
+            st.plotly_chart(make_gauge("CPU %",  cpu_util,  80, 90), use_container_width=True)
         with g4:
-            st.plotly_chart(
-                make_gauge("RAM %", ram_util, warn=82, crit=92),
-                use_container_width=True
-            )
+            st.plotly_chart(make_gauge("RAM %",  ram_util,  82, 92), use_container_width=True)
 
         st.markdown("---")
 
-        # ── SECTION 3: AI DIAGNOSTICS ────────────────────────
+        # ════════════════════════════════════════════════════════
+        # SECTION 3 — AI DIAGNOSTICS ENGINE
+        # ════════════════════════════════════════════════════════
         st.subheader("🤖 AI Diagnostics Engine")
 
-        critical_count = sum(1 for i in issues if i["severity"] == "CRITICAL")
-        high_count     = sum(1 for i in issues if i["severity"] == "HIGH")
+        crit_count = sum(1 for i in issues if i["severity"] == "CRITICAL")
+        high_count = sum(1 for i in issues if i["severity"] == "HIGH")
 
-        if critical_count > 0:
-            st.error(f"🚨 {critical_count} CRITICAL issue(s) detected! Immediate action required.")
+        if crit_count > 0:
+            st.error(f"🚨 {crit_count} CRITICAL issue(s) detected — immediate action required!")
         elif high_count > 0:
             st.warning(f"⚠️ {high_count} HIGH severity issue(s) detected.")
         else:
-            st.success("✅ System running optimally. No bottlenecks detected.")
+            st.success("✅ System running optimally — no bottlenecks detected.")
 
         for issue in issues:
-            sev  = issue["severity"]
+            sev   = issue["severity"]
             itype = issue["issue_type"].replace("_", " ")
-            conf  = issue["confidence"]
+            conf  = f"{issue['confidence'] * 100:.0f}%"
             desc  = issue["description"]
-            conf_pct = f"{conf * 100:.0f}%"
 
             if sev == "NONE":
-                with st.expander(f"✅ {itype} | Confidence: {conf_pct}", expanded=True):
+                with st.expander(f"✅ {itype}  |  Confidence: {conf}", expanded=True):
                     st.write(desc)
             elif sev == "CRITICAL":
-                with st.expander(f"🚨 CRITICAL | {itype} | Confidence: {conf_pct}", expanded=True):
+                with st.expander(f"🚨 CRITICAL  |  {itype}  |  Confidence: {conf}", expanded=True):
                     st.error(desc)
             elif sev == "HIGH":
-                with st.expander(f"⚠️ HIGH | {itype} | Confidence: {conf_pct}", expanded=True):
+                with st.expander(f"⚠️ HIGH  |  {itype}  |  Confidence: {conf}", expanded=True):
                     st.warning(desc)
             elif sev == "MEDIUM":
-                with st.expander(f"ℹ️ MEDIUM | {itype} | Confidence: {conf_pct}", expanded=False):
+                with st.expander(f"ℹ️ MEDIUM  |  {itype}  |  Confidence: {conf}", expanded=False):
                     st.info(desc)
 
         st.markdown("---")
 
-        # ── SECTION 4: PER-CORE CPU BAR CHART ───────────────
+        # ════════════════════════════════════════════════════════
+        # SECTION 4 — ML FPS PREDICTION
+        # ════════════════════════════════════════════════════════
+        st.subheader("🎯 ML FPS Prediction")
+
+        pred_fps   = prediction.get("predicted_fps")
+        pred_ft    = prediction.get("frame_time_ms")
+        pred_tier  = prediction.get("performance_tier", "")
+        pred_model = prediction.get("model_name", "")
+        pred_err   = prediction.get("error")
+
+        if pred_err:
+            st.warning(f"⚠️ Prediction unavailable: {pred_err}")
+            st.info("Run `python -m src.ml.trainer` to train the model first.")
+
+        elif pred_fps:
+            # ── Big metrics row ───────────────────────────────
+            pm1, pm2, pm3, pm4, pm5 = st.columns(5)
+
+            with pm1:
+                fps_delta_color = "normal" if pred_fps >= 60 else "inverse"
+                st.metric(
+                    "🎮 Predicted FPS",
+                    f"{pred_fps:.0f} FPS",
+                    delta=pred_tier,
+                    delta_color=fps_delta_color
+                )
+            with pm2:
+                st.metric("⏱️ Frame Time", f"{pred_ft} ms")
+            with pm3:
+                genre_short = GAME_PROFILES[game_genre]["description"].split("(")[0].strip()
+                st.metric("🕹️ Genre", genre_short)
+            with pm4:
+                rt_str = "ON 🔴" if ray_tracing else "OFF ✅"
+                st.metric("🌟 Ray Tracing", rt_str)
+            with pm5:
+                up_label = upscaling.replace("_", " ").title() if upscaling != "none" else "None"
+                st.metric("🚀 Upscaling", up_label)
+
+            # ── Performance tier banner ───────────────────────
+            if pred_fps >= 144:
+                st.success(
+                    f"🟢 **EXCELLENT**  —  {pred_fps:.0f} FPS  ·  {pred_ft}ms frame time  ·  "
+                    f"Well above 144 Hz target. Your settings are great!"
+                )
+            elif pred_fps >= 60:
+                st.success(
+                    f"🟡 **SMOOTH**  —  {pred_fps:.0f} FPS  ·  {pred_ft}ms frame time  ·  "
+                    f"Above 60 FPS target. Good gaming experience."
+                )
+            elif pred_fps >= 30:
+                st.warning(
+                    f"🟠 **ACCEPTABLE**  —  {pred_fps:.0f} FPS  ·  {pred_ft}ms frame time  ·  "
+                    f"Playable but not ideal. Check recommendations below."
+                )
+            else:
+                st.error(
+                    f"🔴 **POOR**  —  {pred_fps:.0f} FPS  ·  {pred_ft}ms frame time  ·  "
+                    f"Below 30 FPS — significant optimization needed."
+                )
+
+            st.caption(
+                f"Model: **{pred_model}** (R²=97.5%, MAE=7.8 FPS)  ·  "
+                f"Based on live telemetry + selected game settings"
+            )
+
+        st.markdown("---")
+
+        # ════════════════════════════════════════════════════════
+        # SECTION 5 — OPTIMIZATION RECOMMENDATIONS
+        # ════════════════════════════════════════════════════════
+        st.subheader("💡 Optimization Recommendations")
+
+        if not predictor.is_loaded:
+            st.info("ℹ️ Train the ML model to get AI-powered recommendations.")
+
+        elif not recs:
+            st.success(
+                "✅ Your current settings are already well-optimized "
+                "for your RTX 3050 Ti + i7-12650H!"
+            )
+        else:
+            st.caption(
+                f"Estimated FPS gains predicted by **{predictor.model_name}** model "
+                f"based on your current hardware telemetry"
+            )
+
+            # ── Top 3 recommendations as columns ─────────────
+            top_recs  = recs[:3]
+            rec_cols  = st.columns(len(top_recs))
+
+            for idx, rec in enumerate(top_recs):
+                with rec_cols[idx]:
+                    gain = rec["estimated_fps_gain"]
+                    gain_badge = (
+                        "🟢 **HIGH IMPACT**" if gain >= 20 else
+                        "🟡 **MEDIUM IMPACT**" if gain >= 10 else
+                        "🔵 **LOW IMPACT**"
+                    )
+                    st.markdown(f"""
+**{rec['icon']} {rec['action']}**
+
+{gain_badge}
+
+### +{gain:.0f} FPS
+estimated gain
+
+📁 `{rec['category']}` · 🔧 `{rec['difficulty']}`
+
+{rec['description']}
+                    """)
+                    st.markdown("---")
+
+            # ── Remaining recommendations ─────────────────────
+            if len(recs) > 3:
+                with st.expander(f"📋 See {len(recs) - 3} more recommendations"):
+                    for rec in recs[3:]:
+                        gain = rec["estimated_fps_gain"]
+                        r1, r2 = st.columns([3, 1])
+                        with r1:
+                            st.markdown(f"**{rec['icon']} {rec['action']}**")
+                            st.caption(rec["description"])
+                        with r2:
+                            st.metric("Est. Gain", f"+{gain:.0f} FPS")
+                        st.markdown("---")
+
+        st.markdown("---")
+
+        # ════════════════════════════════════════════════════════
+        # SECTION 6 — FPS PREDICTION MATRIX
+        # ════════════════════════════════════════════════════════
+        st.subheader("📊 FPS Prediction Matrix")
+        st.caption(
+            f"Predicted FPS across all Resolution × Quality Preset combinations  "
+            f"(★ = your current setting  |  no RT  |  no upscaling  |  genre: {GAME_PROFILES[game_genre]['description'].split('(')[0].strip()})"
+        )
+
+        if predictor.is_loaded:
+            try:
+                res_list    = list(RESOLUTION_CONFIG.keys())
+                preset_list = list(PRESET_CONFIG.keys())
+                matrix_rows = []
+
+                for res in res_list:
+                    row = {"Resolution": res}
+                    for p in preset_list:
+                        r      = predictor.predict(metrics, game_genre, res, p, False, "none")
+                        fps    = r.get("predicted_fps")
+                        marker = "★ " if (res == resolution and p == preset) else ""
+                        row[p.title()] = f"{marker}{fps:.0f}" if fps else "N/A"
+                    matrix_rows.append(row)
+
+                df_matrix = pd.DataFrame(matrix_rows)
+                st.dataframe(df_matrix, use_container_width=True, hide_index=True)
+                st.caption("★ = Your current settings | Values in FPS")
+
+            except Exception as e:
+                st.caption(f"Matrix unavailable: {e}")
+        else:
+            st.info("Train the model to see the FPS matrix.")
+
+        st.markdown("---")
+
+        # ════════════════════════════════════════════════════════
+        # SECTION 7 — PER-CORE CPU UTILIZATION
+        # ════════════════════════════════════════════════════════
         if per_core:
             st.subheader(f"🔧 Per-Core CPU Utilization — i7-12650H ({len(per_core)} Threads)")
+            st.caption("First 12 = Performance cores (6P × 2 threads)  |  Last 4 = Efficiency cores")
 
-            # First 6 are Performance cores (P-cores), next 4 are Efficiency cores (E-cores)
             core_labels = []
             for i in range(len(per_core)):
-                if i < 12:  # P-cores have 2 threads each = 12 logical (6 cores x 2)
-                    core_labels.append(f"P-Core {i//2} T{i%2}")
-                else:
-                    core_labels.append(f"E-Core {(i-12)//1}")
+                core_labels.append(
+                    f"P{i//2}·T{i%2}" if i < 12 else f"E{i - 12}"
+                )
 
             bar_colors = [
-                "#ef4444" if v > 90 else "#f59e0b" if v > 70 else "#3b82f6"
+                "#ef4444" if v > 90 else
+                "#f59e0b" if v > 70 else
+                "#3b82f6"
                 for v in per_core
             ]
 
@@ -291,41 +514,47 @@ while True:
                 x=core_labels,
                 y=per_core,
                 marker_color=bar_colors,
-                text=[f"{v}%" for v in per_core],
-                textposition="outside"
+                text=[f"{v:.0f}%" for v in per_core],
+                textposition="outside",
+                textfont={"size": 10, "color": "white"}
             ))
             fig.update_layout(
-                height=280,
+                height=260,
                 paper_bgcolor="#0e1117",
                 plot_bgcolor="#0e1117",
                 font={"color": "white", "size": 11},
-                xaxis={"tickangle": -45},
-                yaxis={"range": [0, 110], "gridcolor": "#1e2130"},
-                margin=dict(l=10, r=10, t=20, b=60),
-                showlegend=False
+                xaxis={"tickangle": 0, "gridcolor": "#1e2130"},
+                yaxis={"range": [0, 115], "gridcolor": "#1e2130"},
+                margin=dict(l=10, r=10, t=30, b=30)
             )
             st.plotly_chart(fig, use_container_width=True)
             st.markdown("---")
 
-        # ── SECTION 5: TOP BACKGROUND PROCESSES ─────────────
+        # ════════════════════════════════════════════════════════
+        # SECTION 8 — TOP BACKGROUND PROCESSES
+        # ════════════════════════════════════════════════════════
         st.subheader("🔍 Top Background Processes (CPU Impact)")
-
         top_procs = sys_.get("top_processes", [])
+
         if top_procs:
-            df_procs = pd.DataFrame(top_procs)[["pid", "name", "cpu_percent", "memory_percent"]]
-            df_procs.columns = ["PID", "Process Name", "CPU %", "Memory %"]
-            df_procs["CPU %"]    = df_procs["CPU %"].round(2)
+            df_procs = pd.DataFrame(top_procs)[
+                ["pid", "name", "cpu_percent", "memory_percent"]
+            ]
+            df_procs.columns  = ["PID", "Process Name", "CPU %", "Memory %"]
+            df_procs["CPU %"] = df_procs["CPU %"].round(2)
             df_procs["Memory %"] = df_procs["Memory %"].round(2)
             st.dataframe(df_procs, use_container_width=True, hide_index=True)
 
-        # ── FOOTER ───────────────────────────────────────────
+        # ════════════════════════════════════════════════════════
+        # FOOTER
+        # ════════════════════════════════════════════════════════
         st.markdown("---")
-        col_a, col_b, col_c = st.columns(3)
-        with col_a:
+        fa, fb, fc = st.columns(3)
+        with fa:
             st.caption(f"🕐 Last updated: {metrics['timestamp']}")
-        with col_b:
+        with fb:
             st.caption(f"⏱️ Refresh: every {refresh_rate}s")
-        with col_c:
+        with fc:
             try:
                 st.caption(f"💾 Records saved: {db.get_total_records():,}")
             except Exception:

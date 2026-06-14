@@ -1,0 +1,5 @@
+{
+  "best_model": "LightGBM",
+  "trained_at": "2026-06-14T01:52:13.947534",
+  "model_file": "best_model.pkl"
+}
