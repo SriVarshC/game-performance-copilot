@@ -1,6 +1,7 @@
 """
 Game Performance Copilot — FastAPI Backend
 Phase 3: REST API wrapping ML model, telemetry, diagnostics, recommendations.
+Phase 4: Ollama LLM Assistant with live telemetry context injection.
 Run: uvicorn src.api.main:app --reload --port 8000
 Docs: http://localhost:8000/docs
 """
@@ -49,10 +50,11 @@ app = FastAPI(
         "- **FPS Prediction** — LightGBM model, R2=97.5%, MAE=7.8 FPS\n"
         "- **Live Telemetry** — GPU / CPU / RAM / System metrics in real time\n"
         "- **AI Diagnostics** — 7 bottleneck types auto-detected\n"
-        "- **Recommendations** — Up to 6 ranked optimizations with ML-estimated FPS gains\n\n"
+        "- **Recommendations** — Up to 6 ranked optimizations with ML-estimated FPS gains\n"
+        "- **LLM Assistant** — Natural language Q&A powered by llama3.2 with live telemetry context\n\n"
         "Hardware: RTX 3050 Ti + i7-12650H + 16 GB RAM"
     ),
-    version="1.0.0",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
@@ -66,18 +68,19 @@ app.add_middleware(
 )
 
 # ── Register Routers ─────────────────────────────────────────────────────────
-from src.api.routes import predict, telemetry, recommend  # noqa: E402
+from src.api.routes import predict, telemetry, recommend, llm  # noqa: E402
 
 app.include_router(predict.router,   prefix="/api", tags=["Prediction"])
 app.include_router(telemetry.router, prefix="/api", tags=["Telemetry"])
 app.include_router(recommend.router, prefix="/api", tags=["Recommendations"])
+app.include_router(llm.router,       prefix="/api", tags=["LLM Assistant"])
 
 
 # ── Health Endpoint ──────────────────────────────────────────────────────────
 @app.get("/api/health", tags=["Health"], summary="API Health Check")
 def health_check():
     """Check API status and confirm ML model is loaded."""
-    # ✅ ALL variables initialized BEFORE try block
+    # ALL variables initialized BEFORE try block
     # so return statement never hits NameError
     model_loaded = False
     model_name   = "unknown"
@@ -99,7 +102,7 @@ def health_check():
         "model_loaded": model_loaded,
         "model_name":   model_name,
         "trained_at":   trained_at,
-        "api_version":  "1.0.0",
+        "api_version":  "2.0.0",
     }
 
 
@@ -108,13 +111,14 @@ def health_check():
 def root():
     return {
         "project": "Game Performance Copilot",
-        "version": "1.0.0",
+        "version": "2.0.0",
         "endpoints": {
             "health":      "GET  /api/health",
             "telemetry":   "GET  /api/telemetry",
             "diagnostics": "GET  /api/telemetry/diagnostics",
             "predict":     "POST /api/predict",
             "recommend":   "POST /api/recommend",
+            "llm":         "POST /api/llm/ask",
         },
         "docs":  "/docs",
         "redoc": "/redoc",
