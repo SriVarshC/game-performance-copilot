@@ -147,8 +147,11 @@ class DatabaseManager:
         conn.close()
 
     def insert_recommendation(self, recommendation: str,
-                               estimated_fps_gain: float, category: str):
-        """Save a performance recommendation."""
+                               estimated_fps_gain: float, category: str) -> int:
+        """
+        Save a performance recommendation.
+        Returns the new row ID so callers can attach feedback later.
+        """
         conn = self._get_connection()
         cursor = conn.cursor()
         cursor.execute("""
@@ -156,7 +159,9 @@ class DatabaseManager:
             VALUES (?, ?, ?, ?)
         """, (datetime.now().isoformat(), recommendation, estimated_fps_gain, category))
         conn.commit()
+        new_id = cursor.lastrowid   # ← capture BEFORE close
         conn.close()
+        return new_id               # ← return so route can attach to recommendation dict
 
     def update_recommendation_feedback(self, recommendation_id: int, was_helpful: bool):
         """Record whether a recommendation was useful (for future ML training)."""
@@ -204,3 +209,90 @@ class DatabaseManager:
         count = cursor.fetchone()[0]
         conn.close()
         return count
+
+    def get_feedback_summary(self) -> dict:
+        """Return aggregated feedback statistics from the recommendations table."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # Total recommendations ever stored
+        cursor.execute("SELECT COUNT(*) FROM recommendations")
+        total = cursor.fetchone()[0] or 0
+
+        # How many have feedback recorded
+        cursor.execute(
+            "SELECT COUNT(*) FROM recommendations WHERE was_helpful IS NOT NULL"
+        )
+        feedback_given = cursor.fetchone()[0] or 0
+
+        # Helpful count
+        cursor.execute(
+            "SELECT COUNT(*) FROM recommendations WHERE was_helpful = 1"
+        )
+        helpful = cursor.fetchone()[0] or 0
+
+        # Not-helpful count
+        cursor.execute(
+            "SELECT COUNT(*) FROM recommendations WHERE was_helpful = 0"
+        )
+        not_helpful = cursor.fetchone()[0] or 0
+
+        # Helpful percentage
+        helpful_pct = round((helpful / feedback_given * 100), 1) if feedback_given > 0 else 0.0
+
+        # Per-category breakdown
+        cursor.execute("""
+            SELECT   category,
+                     COUNT(*)                                          AS total,
+                     SUM(CASE WHEN was_helpful = 1 THEN 1 ELSE 0 END) AS helpful,
+                     SUM(CASE WHEN was_helpful = 0 THEN 1 ELSE 0 END) AS not_helpful
+            FROM     recommendations
+            WHERE    was_helpful IS NOT NULL
+            GROUP BY category
+            ORDER BY helpful DESC
+        """)
+        rows = cursor.fetchall()
+        conn.close()
+
+        return {
+            "total_recommendations": total,
+            "feedback_given":        feedback_given,
+            "helpful":               helpful,
+            "not_helpful":           not_helpful,
+            "helpful_percentage":    helpful_pct,
+            "by_category": [
+                {
+                    "category":    row[0],
+                    "total":       row[1],
+                    "helpful":     row[2],
+                    "not_helpful": row[3]
+                }
+                for row in rows
+            ]
+        }
+
+    def get_recent_recommendations(self, limit: int = 20) -> list:
+        """Return recent recommendations with their feedback status."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT   id, recommendation, estimated_fps_gain,
+                     category, was_helpful, timestamp
+            FROM     recommendations
+            ORDER BY id DESC
+            LIMIT    ?
+        """, (limit,))
+        rows = cursor.fetchall()
+        conn.close()
+
+        return [
+            {
+                "id":             row[0],
+                "recommendation": row[1],
+                "fps_gain":       row[2],
+                "category":       row[3],
+                "was_helpful":    row[4],
+                "timestamp":      row[5]
+            }
+            for row in rows
+        ]

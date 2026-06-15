@@ -15,6 +15,7 @@ router = APIRouter()
 # ── Lazy singletons ──────────────────────────────────────────────────────────
 _predictor  = None
 _rec_engine = None
+_db         = None                          # ← NEW
 
 
 def get_rec_engine():
@@ -26,6 +27,14 @@ def get_rec_engine():
         from src.ml.recommendation_engine import RecommendationEngine
         _rec_engine = RecommendationEngine(_predictor)
     return _rec_engine
+
+
+def get_db():                               # ← NEW
+    global _db
+    if _db is None:
+        from src.database.db_manager import DatabaseManager
+        _db = DatabaseManager()
+    return _db
 
 
 # ── Request Schema ───────────────────────────────────────────────────────────
@@ -111,6 +120,17 @@ def get_recommendations(request: RecommendRequest):
             upscaling=request.upscaling,
             issues=issues,
         )
+
+        # ── Store to DB + attach ID to each recommendation ────────────────────
+        # ← NEW BLOCK — every rec gets saved and gets an id back
+        db = get_db()
+        for rec in recommendations:
+            rec_id = db.insert_recommendation(
+                recommendation   = rec.get("action", ""),
+                estimated_fps_gain = float(rec.get("estimated_fps_gain", 0)),
+                category         = rec.get("category", "general")
+            )
+            rec["id"] = rec_id      # attach so caller can submit feedback later
 
         return {
             "status": "success",

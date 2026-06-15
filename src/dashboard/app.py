@@ -1,6 +1,6 @@
 """
 Game Performance Copilot — Full Dashboard
-Phase 1 + Phase 2: Telemetry + ML FPS Prediction + Recommendations
+Phase 1 + Phase 2 + Phase 6: Telemetry + ML FPS Prediction + Recommendations + Feedback
 """
 
 import streamlit as st
@@ -64,6 +64,15 @@ def load_components():
     return collector, db, diagnostics, predictor, rec_engine
 
 collector, db, diagnostics_engine, predictor, rec_engine = load_components()
+
+# ─────────────────────────────────────────────────────────────
+# SESSION STATE — Recommendations + Feedback
+# Initialized ONCE before the while loop so they survive reruns
+# ─────────────────────────────────────────────────────────────
+if "recs"           not in st.session_state:
+    st.session_state.recs           = None   # list of rec dicts with ids
+if "feedback_given" not in st.session_state:
+    st.session_state.feedback_given = {}     # { rec_id: True/False }
 
 # ─────────────────────────────────────────────────────────────
 # SIDEBAR
@@ -139,7 +148,7 @@ with st.sidebar:
         st.error("❌ No model loaded\n\nRun: `python -m src.ml.trainer`")
 
     st.markdown("---")
-    st.caption("Phase 1+2: Telemetry + ML")
+    st.caption("Phase 1+2+6: Telemetry + ML + Feedback")
     st.caption("Built with Python · Streamlit · LightGBM")
 
 # ─────────────────────────────────────────────────────────────
@@ -173,11 +182,29 @@ while True:
         metrics, game_genre, resolution, preset, ray_tracing, upscaling
     )
 
-    # ── Generate recommendations ──────────────────────────────
-    recs = rec_engine.generate(
-        metrics, game_genre, resolution, preset,
-        ray_tracing, upscaling, issues
-    )
+    # ── Generate recommendations ONCE per session ─────────────
+    # Only regenerates when session_state.recs is None
+    # (first load, or after user clicks "Refresh Recommendations")
+    if st.session_state.recs is None:
+        try:
+            raw_recs = rec_engine.generate(
+                metrics, game_genre, resolution, preset,
+                ray_tracing, upscaling, issues
+            )
+            # Store every recommendation to DB, attach returned ID
+            for rec in raw_recs:
+                rid = db.insert_recommendation(
+                    recommendation     = rec.get("action", ""),
+                    estimated_fps_gain = float(rec.get("estimated_fps_gain", 0)),
+                    category           = rec.get("category", "general")
+                )
+                rec["id"] = rid      # attach so feedback buttons can reference it
+            st.session_state.recs = raw_recs
+        except Exception:
+            st.session_state.recs = []
+
+    # Use the stored recommendations for this render pass
+    recs = st.session_state.recs or []
 
     # ── Unpack metric values ──────────────────────────────────
     gpu  = metrics.get("gpu", {})
@@ -343,7 +370,6 @@ while True:
             st.info("Run `python -m src.ml.trainer` to train the model first.")
 
         elif pred_fps:
-            # ── Big metrics row ───────────────────────────────
             pm1, pm2, pm3, pm4, pm5 = st.columns(5)
 
             with pm1:
@@ -366,7 +392,6 @@ while True:
                 up_label = upscaling.replace("_", " ").title() if upscaling != "none" else "None"
                 st.metric("🚀 Upscaling", up_label)
 
-            # ── Performance tier banner ───────────────────────
             if pred_fps >= 144:
                 st.success(
                     f"🟢 **EXCELLENT**  —  {pred_fps:.0f} FPS  ·  {pred_ft}ms frame time  ·  "
@@ -396,9 +421,22 @@ while True:
         st.markdown("---")
 
         # ════════════════════════════════════════════════════════
-        # SECTION 5 — OPTIMIZATION RECOMMENDATIONS
+        # SECTION 5 — OPTIMIZATION RECOMMENDATIONS + FEEDBACK
         # ════════════════════════════════════════════════════════
         st.subheader("💡 Optimization Recommendations")
+
+        # ── Refresh button ────────────────────────────────────
+        col_btn, col_hint = st.columns([2, 8])
+        with col_btn:
+            if st.button("🔄 Refresh Recommendations", key="refresh_recs"):
+                st.session_state.recs           = None
+                st.session_state.feedback_given = {}
+                st.rerun()
+        with col_hint:
+            st.caption(
+                "Recommendations are generated once per session. "
+                "Click Refresh to regenerate with current live metrics."
+            )
 
         if not predictor.is_loaded:
             st.info("ℹ️ Train the ML model to get AI-powered recommendations.")
@@ -410,48 +448,55 @@ while True:
             )
         else:
             st.caption(
-                f"Estimated FPS gains predicted by **{predictor.model_name}** model "
-                f"based on your current hardware telemetry"
+                f"Found **{len(recs)}** recommendation(s) — try them and use "
+                f"👍 / 👎 to tell us if they helped!"
             )
 
-            # ── Top 3 recommendations as columns ─────────────
-            top_recs  = recs[:3]
-            rec_cols  = st.columns(len(top_recs))
+            for rec in recs:
+                rec_id = rec.get("id")
+                gain   = rec.get("estimated_fps_gain", 0)
+                gain_badge = (
+                    "🟢 HIGH IMPACT"   if gain >= 20 else
+                    "🟡 MEDIUM IMPACT" if gain >= 10 else
+                    "🔵 LOW IMPACT"
+                )
 
-            for idx, rec in enumerate(top_recs):
-                with rec_cols[idx]:
-                    gain = rec["estimated_fps_gain"]
-                    gain_badge = (
-                        "🟢 **HIGH IMPACT**" if gain >= 20 else
-                        "🟡 **MEDIUM IMPACT**" if gain >= 10 else
-                        "🔵 **LOW IMPACT**"
-                    )
-                    st.markdown(f"""
-**{rec['icon']} {rec['action']}**
+                with st.container(border=True):
+                    left_col, right_col = st.columns([8, 2])
 
-{gain_badge}
+                    with left_col:
+                        st.markdown(
+                            f"**{rec.get('icon', '🎮')} {rec.get('action', 'Recommendation')}**"
+                            f"  —  {gain_badge}  —  **+{gain:.0f} FPS** estimated"
+                        )
+                        st.caption(rec.get("description", ""))
+                        st.markdown(
+                            f"`{rec.get('category', '').upper()}` &nbsp;|&nbsp; "
+                            f"Difficulty: `{rec.get('difficulty', '')}`"
+                        )
 
-### +{gain:.0f} FPS
-estimated gain
-
-📁 `{rec['category']}` · 🔧 `{rec['difficulty']}`
-
-{rec['description']}
-                    """)
-                    st.markdown("---")
-
-            # ── Remaining recommendations ─────────────────────
-            if len(recs) > 3:
-                with st.expander(f"📋 See {len(recs) - 3} more recommendations"):
-                    for rec in recs[3:]:
-                        gain = rec["estimated_fps_gain"]
-                        r1, r2 = st.columns([3, 1])
-                        with r1:
-                            st.markdown(f"**{rec['icon']} {rec['action']}**")
-                            st.caption(rec["description"])
-                        with r2:
-                            st.metric("Est. Gain", f"+{gain:.0f} FPS")
-                        st.markdown("---")
+                    with right_col:
+                        # Show recorded state OR voting buttons
+                        if rec_id in st.session_state.feedback_given:
+                            if st.session_state.feedback_given[rec_id]:
+                                st.success("👍 Helpful!")
+                            else:
+                                st.info("👎 Noted")
+                        else:
+                            st.caption("Was this helpful?")
+                            fb1, fb2 = st.columns(2)
+                            with fb1:
+                                if st.button("👍", key=f"up_{rec_id}",
+                                             help="This helped me!"):
+                                    db.update_recommendation_feedback(rec_id, True)
+                                    st.session_state.feedback_given[rec_id] = True
+                                    st.rerun()
+                            with fb2:
+                                if st.button("👎", key=f"dn_{rec_id}",
+                                             help="Did not help"):
+                                    db.update_recommendation_feedback(rec_id, False)
+                                    st.session_state.feedback_given[rec_id] = False
+                                    st.rerun()
 
         st.markdown("---")
 
@@ -461,7 +506,8 @@ estimated gain
         st.subheader("📊 FPS Prediction Matrix")
         st.caption(
             f"Predicted FPS across all Resolution × Quality Preset combinations  "
-            f"(★ = your current setting  |  no RT  |  no upscaling  |  genre: {GAME_PROFILES[game_genre]['description'].split('(')[0].strip()})"
+            f"(★ = your current setting  |  no RT  |  no upscaling  |  "
+            f"genre: {GAME_PROFILES[game_genre]['description'].split('(')[0].strip()})"
         )
 
         if predictor.is_loaded:
@@ -540,10 +586,64 @@ estimated gain
             df_procs = pd.DataFrame(top_procs)[
                 ["pid", "name", "cpu_percent", "memory_percent"]
             ]
-            df_procs.columns  = ["PID", "Process Name", "CPU %", "Memory %"]
-            df_procs["CPU %"] = df_procs["CPU %"].round(2)
+            df_procs.columns     = ["PID", "Process Name", "CPU %", "Memory %"]
+            df_procs["CPU %"]    = df_procs["CPU %"].round(2)
             df_procs["Memory %"] = df_procs["Memory %"].round(2)
             st.dataframe(df_procs, use_container_width=True, hide_index=True)
+
+        st.markdown("---")
+
+        # ════════════════════════════════════════════════════════
+        # SECTION 9 — FEEDBACK ANALYTICS
+        # ════════════════════════════════════════════════════════
+        st.subheader("📊 Recommendation Feedback Analytics")
+
+        try:
+            summary = db.get_feedback_summary()
+
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("📋 Total Stored",   summary["total_recommendations"])
+            m2.metric("💬 Feedback Given", summary["feedback_given"])
+            m3.metric("👍 Helpful",        summary["helpful"])
+            m4.metric("👎 Not Helpful",    summary["not_helpful"])
+
+            if summary["feedback_given"] > 0:
+                st.progress(
+                    summary["helpful_percentage"] / 100,
+                    text=(
+                        f"**{summary['helpful_percentage']}% "
+                        f"of rated recommendations were helpful**"
+                    )
+                )
+
+                if summary["by_category"]:
+                    st.subheader("By Category")
+                    cat_df = pd.DataFrame(summary["by_category"])
+                    st.bar_chart(
+                        cat_df.set_index("category")[["helpful", "not_helpful"]]
+                    )
+            else:
+                st.info(
+                    "No feedback recorded yet — use 👍 / 👎 buttons above "
+                    "after trying a recommendation!"
+                )
+
+            with st.expander("📋 Recent Recommendations History"):
+                recent = db.get_recent_recommendations(limit=20)
+                if recent:
+                    df_recent = pd.DataFrame(recent)
+                    # Map int/None to readable labels — use fillna for NaN safety
+                    df_recent["was_helpful"] = (
+                        df_recent["was_helpful"]
+                        .map({1: "👍 Helpful", 0: "👎 Not Helpful"})
+                        .fillna("⏳ Pending")
+                    )
+                    st.dataframe(df_recent, use_container_width=True, hide_index=True)
+                else:
+                    st.caption("No history yet.")
+
+        except Exception as e:
+            st.warning(f"Could not load feedback analytics: {e}")
 
         # ════════════════════════════════════════════════════════
         # FOOTER

@@ -9,6 +9,8 @@ Docs: http://localhost:8000/docs
 import json
 import os
 from contextlib import asynccontextmanager
+# ADD to imports (with the other route imports)
+from src.api.routes import predict, telemetry, recommend, llm, feedback  # add feedback
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -74,6 +76,7 @@ app.include_router(predict.router,   prefix="/api", tags=["Prediction"])
 app.include_router(telemetry.router, prefix="/api", tags=["Telemetry"])
 app.include_router(recommend.router, prefix="/api", tags=["Recommendations"])
 app.include_router(llm.router,       prefix="/api", tags=["LLM Assistant"])
+app.include_router(feedback.router)
 
 
 # ── Health Endpoint ──────────────────────────────────────────────────────────
