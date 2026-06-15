@@ -13,3 +13,4 @@ xgboost
 lightgbm
 scikit-learn
 joblib
+httpx

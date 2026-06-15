@@ -1,0 +1,34 @@
+# Virtual environment — never in image
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Database files — mounted as volume at runtime
+data/*.db
+
+# Secrets
+.env
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.github/
+
+# Build artifacts
+*.egg-info/
+dist/
+build/
+
+# Test cache
+.pytest_cache/
+tests/
+
+# Docs
+*.md
