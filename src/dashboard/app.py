@@ -161,6 +161,23 @@ st.markdown("---")
 # ─────────────────────────────────────────────────────────────
 # LIVE LOOP
 # ─────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
+# REFRESH BUTTON — must live OUTSIDE the while loop so Streamlit
+# only registers the key="refresh_recs" widget once per script run.
+# Placing it inside the loop (or inside placeholder.container())
+# re-registers the same key on every iteration → DuplicateWidgetID.
+# ─────────────────────────────────────────────────────────────
+col_btn, col_hint = st.columns([2, 8])
+with col_btn:
+    if st.button("🔄 Refresh Recommendations", key="refresh_recs"):
+        st.session_state.recs           = None
+        st.session_state.feedback_given = {}
+with col_hint:
+    st.caption(
+        "Recommendations are generated once per session. "
+        "Click Refresh to regenerate with current live metrics."
+    )
+
 placeholder = st.empty()
 
 while True:
@@ -425,19 +442,6 @@ while True:
         # ════════════════════════════════════════════════════════
         st.subheader("💡 Optimization Recommendations")
 
-        # ── Refresh button ────────────────────────────────────
-        col_btn, col_hint = st.columns([2, 8])
-        with col_btn:
-            if st.button("🔄 Refresh Recommendations", key="refresh_recs"):
-                st.session_state.recs           = None
-                st.session_state.feedback_given = {}
-                st.rerun()
-        with col_hint:
-            st.caption(
-                "Recommendations are generated once per session. "
-                "Click Refresh to regenerate with current live metrics."
-            )
-
         if not predictor.is_loaded:
             st.info("ℹ️ Train the ML model to get AI-powered recommendations.")
 
@@ -490,13 +494,11 @@ while True:
                                              help="This helped me!"):
                                     db.update_recommendation_feedback(rec_id, True)
                                     st.session_state.feedback_given[rec_id] = True
-                                    st.rerun()
                             with fb2:
                                 if st.button("👎", key=f"dn_{rec_id}",
                                              help="Did not help"):
                                     db.update_recommendation_feedback(rec_id, False)
                                     st.session_state.feedback_given[rec_id] = False
-                                    st.rerun()
 
         st.markdown("---")
 
