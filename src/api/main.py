@@ -2,6 +2,7 @@
 Game Performance Copilot — FastAPI Backend
 Phase 3: REST API wrapping ML model, telemetry, diagnostics, recommendations.
 Phase 4: Ollama LLM Assistant with live telemetry context injection.
+Phase 4 (upgrade): PostgreSQL + CORS for React frontend.
 Run: uvicorn src.api.main:app --reload --port 8000
 Docs: http://localhost:8000/docs
 """
@@ -9,14 +10,18 @@ Docs: http://localhost:8000/docs
 import json
 import os
 from contextlib import asynccontextmanager
-# ADD to imports (with the other route imports)
-from src.api.routes import predict, telemetry, recommend, llm, feedback  # add feedback
+from dotenv import load_dotenv
+
+# Load .env file at startup
+load_dotenv()
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from src.api.routes import predict, telemetry, recommend, llm, feedback
 
-# ── Lifespan: preload heavy models at startup so first request is instant ──
+
+# ── Lifespan ─────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # STARTUP
@@ -25,10 +30,19 @@ async def lifespan(app: FastAPI):
         from src.api.routes.predict import get_predictor
         get_predictor()
         print("[API] Model preloaded successfully.")
-        print("[API] API ready   → http://localhost:8000")
-        print("[API] Swagger UI  → http://localhost:8000/docs")
     except Exception as e:
         print(f"[API] Warning: Could not preload model at startup: {e}")
+
+    # Initialize PostgreSQL tables
+    try:
+        from src.database.connection import init_db
+        init_db()
+        print("[API] PostgreSQL tables verified.")
+    except Exception as e:
+        print(f"[API] Warning: Could not initialize DB: {e}")
+
+    print("[API] API ready   → http://localhost:8000")
+    print("[API] Swagger UI  → http://localhost:8000/docs")
 
     yield  # ← server is running here
 
@@ -43,7 +57,7 @@ async def lifespan(app: FastAPI):
         pass
 
 
-# ── App ──────────────────────────────────────────────────────────────────────
+# ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(
     title="Game Performance Copilot API",
     description=(
@@ -53,38 +67,43 @@ app = FastAPI(
         "- **Live Telemetry** — GPU / CPU / RAM / System metrics in real time\n"
         "- **AI Diagnostics** — 7 bottleneck types auto-detected\n"
         "- **Recommendations** — Up to 6 ranked optimizations with ML-estimated FPS gains\n"
-        "- **LLM Assistant** — Natural language Q&A powered by llama3.2 with live telemetry context\n\n"
+        "- **LLM Assistant** — Natural language Q&A powered by llama3.2\n\n"
         "Hardware: RTX 3050 Ti + i7-12650H + 16 GB RAM"
     ),
-    version="2.0.0",
+    version="3.0.0",
     lifespan=lifespan,
 )
 
-# CORS — allows the Streamlit dashboard (port 8501) to call this API (port 8000)
+# ── CORS ──────────────────────────────────────────────────────────────────────
+# Allow Streamlit (8501) + React dev server (3000) + React prod (80)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:8501",
+        "http://localhost:80",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:8501",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ── Register Routers ─────────────────────────────────────────────────────────
-from src.api.routes import predict, telemetry, recommend, llm  # noqa: E402
+# ── Routers ───────────────────────────────────────────────────────────────────
+from src.api.routes import analytics  # noqa: E402
 
 app.include_router(predict.router,   prefix="/api", tags=["Prediction"])
 app.include_router(telemetry.router, prefix="/api", tags=["Telemetry"])
 app.include_router(recommend.router, prefix="/api", tags=["Recommendations"])
 app.include_router(llm.router,       prefix="/api", tags=["LLM Assistant"])
-app.include_router(feedback.router)
+app.include_router(feedback.router,  prefix="/api", tags=["Feedback"])
+app.include_router(analytics.router, prefix="/api", tags=["Analytics"])
 
 
-# ── Health Endpoint ──────────────────────────────────────────────────────────
+# ── Health ────────────────────────────────────────────────────────────────────
 @app.get("/api/health", tags=["Health"], summary="API Health Check")
 def health_check():
-    """Check API status and confirm ML model is loaded."""
-    # ALL variables initialized BEFORE try block
-    # so return statement never hits NameError
     model_loaded = False
     model_name   = "unknown"
     trained_at   = "unknown"
@@ -105,23 +124,26 @@ def health_check():
         "model_loaded": model_loaded,
         "model_name":   model_name,
         "trained_at":   trained_at,
-        "api_version":  "2.0.0",
+        "api_version":  "3.0.0",
     }
 
 
-# ── Root ─────────────────────────────────────────────────────────────────────
+# ── Root ──────────────────────────────────────────────────────────────────────
 @app.get("/", tags=["Root"])
 def root():
     return {
         "project": "Game Performance Copilot",
-        "version": "2.0.0",
+        "version": "3.0.0",
         "endpoints": {
             "health":      "GET  /api/health",
             "telemetry":   "GET  /api/telemetry",
+            "history":     "GET  /api/telemetry/history",
             "diagnostics": "GET  /api/telemetry/diagnostics",
             "predict":     "POST /api/predict",
             "recommend":   "POST /api/recommend",
             "llm":         "POST /api/llm/ask",
+            "analytics":   "GET  /api/analytics",
+            "feedback":    "POST /api/feedback/{id}",
         },
         "docs":  "/docs",
         "redoc": "/redoc",

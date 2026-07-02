@@ -1,20 +1,18 @@
 """
-Feedback routes — POST /api/feedback/{id}  and  GET /api/feedback/summary
+Feedback routes — PostgreSQL backed.
+POST /api/feedback/{id}      — submit thumbs up/down
+GET  /api/feedback/summary   — aggregated feedback stats
 """
-from fastapi import APIRouter, HTTPException
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from src.database.db_manager import DatabaseManager
+from sqlalchemy.orm import Session
+from sqlalchemy import func, case
+
+from src.database.connection import get_db
+from src.database.models import Recommendation as RecommendationModel
 
 router = APIRouter()
-
-# ── Lazy singleton ────────────────────────────────────────────────────────────
-_db: DatabaseManager | None = None
-
-def get_db() -> DatabaseManager:
-    global _db
-    if _db is None:
-        _db = DatabaseManager()
-    return _db
 
 
 # ── Request model ─────────────────────────────────────────────────────────────
@@ -22,36 +20,107 @@ class FeedbackRequest(BaseModel):
     was_helpful: bool
 
 
-# ── POST /api/feedback/{recommendation_id} ────────────────────────────────────
-@router.post("/api/feedback/{recommendation_id}")
-def submit_feedback(recommendation_id: int, body: FeedbackRequest):
-    """
-    Record whether a recommendation was helpful.
-    was_helpful: true = 👍  |  false = 👎
-    """
+# ── POST /feedback/{recommendation_id} ───────────────────────────────────────
+@router.post(
+    "/feedback/{recommendation_id}",
+    summary="Submit Recommendation Feedback",
+)
+def submit_feedback(
+    recommendation_id: int,
+    body: FeedbackRequest,
+    db: Session = Depends(get_db),
+):
     try:
-        db = get_db()
-        db.update_recommendation_feedback(recommendation_id, body.was_helpful)
+        rec = (
+            db.query(RecommendationModel)
+            .filter(RecommendationModel.recommendation_id == recommendation_id)
+            .first()
+        )
+
+        if not rec:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Recommendation {recommendation_id} not found"
+            )
+
+        rec.was_helpful = body.was_helpful
+        db.commit()
+
         return {
             "status":      "success",
             "message":     "Feedback recorded — thank you!",
             "id":          recommendation_id,
-            "was_helpful": body.was_helpful
+            "was_helpful": body.was_helpful,
         }
+    except HTTPException:
+        raise
     except Exception as exc:
+        db.rollback()
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-# ── GET /api/feedback/summary ─────────────────────────────────────────────────
-@router.get("/api/feedback/summary")
-def get_feedback_summary():
-    """
-    Return aggregated feedback statistics.
-    Includes overall counts, helpful %, and per-category breakdown.
-    """
+# ── GET /feedback/summary ─────────────────────────────────────────────────────
+@router.get(
+    "/feedback/summary",
+    summary="Get Feedback Analytics Summary",
+)
+def get_feedback_summary(db: Session = Depends(get_db)):
     try:
-        db = get_db()
-        summary = db.get_feedback_summary()
-        return {"status": "success", **summary}
+        total = db.query(
+            func.count(RecommendationModel.recommendation_id)
+        ).scalar() or 0
+
+        feedback_given = db.query(
+            func.count(RecommendationModel.recommendation_id)
+        ).filter(
+            RecommendationModel.was_helpful.isnot(None)
+        ).scalar() or 0
+
+        helpful = db.query(
+            func.count(RecommendationModel.recommendation_id)
+        ).filter(
+            RecommendationModel.was_helpful == True
+        ).scalar() or 0
+
+        not_helpful = db.query(
+            func.count(RecommendationModel.recommendation_id)
+        ).filter(
+            RecommendationModel.was_helpful == False
+        ).scalar() or 0
+
+        helpful_pct = round(
+            (helpful / feedback_given * 100) if feedback_given > 0 else 0, 1
+        )
+
+        # Per-category breakdown — SQLAlchemy 2.0 case() syntax
+        category_rows = db.query(
+            RecommendationModel.category,
+            func.count(RecommendationModel.recommendation_id).label("total"),
+            func.sum(
+                case(
+                    (RecommendationModel.was_helpful == True, 1),
+                    else_=0
+                )
+            ).label("helpful_count"),
+        ).group_by(RecommendationModel.category).all()
+
+        by_category = [
+            {
+                "category": row.category or "general",
+                "total":    row.total,
+                "helpful":  int(row.helpful_count or 0),
+            }
+            for row in category_rows
+        ]
+
+        return {
+            "status":                "success",
+            "total_recommendations": total,
+            "feedback_given":        feedback_given,
+            "helpful":               helpful,
+            "not_helpful":           not_helpful,
+            "helpful_percentage":    helpful_pct,
+            "by_category":           by_category,
+        }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))

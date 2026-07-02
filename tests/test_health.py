@@ -33,7 +33,7 @@ def test_health_model_name_lightgbm():
 
 
 def test_health_api_version():
-    """API version should be 2.0.0."""
+    """API version should be 3.0.0."""
     response = client.get("/api/health")
     data = response.json()
-    assert data["api_version"] == "2.0.0"
+    assert data["api_version"] == "3.0.0"
