@@ -1,5 +1,15 @@
 {
   "best_model": "LightGBM",
-  "trained_at": "2026-06-14T01:52:13.947534",
-  "model_file": "best_model.pkl"
+  "trained_at": "2026-07-02T17:50:24.301201",
+  "model_file": "best_model.pkl",
+  "low_fps_model": "low_fps_model.pkl",
+  "bottleneck_model": "bottleneck_model.pkl",
+  "health_model": "health_model.pkl",
+  "bottleneck_classes": [
+    "BALANCED",
+    "CPU",
+    "GPU",
+    "MEMORY",
+    "THERMAL"
+  ]
 }

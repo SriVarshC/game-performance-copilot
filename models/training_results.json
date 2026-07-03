@@ -1,26 +1,46 @@
 {
   "XGBoost": {
-    "model": "XGBoost",
-    "MAE": 8.298,
-    "RMSE": 13.484,
-    "R2": 0.9697,
-    "MAPE_pct": 8.68,
-    "accuracy_pct": 91.32
+    "model": "XGBoost FPS",
+    "MAE": 7.82,
+    "RMSE": 11.913,
+    "R2": 0.9727,
+    "MAPE_pct": 9.08,
+    "accuracy_pct": 90.92
   },
   "LightGBM": {
-    "model": "LightGBM",
-    "MAE": 7.825,
-    "RMSE": 12.348,
-    "R2": 0.9746,
-    "MAPE_pct": 8.36,
-    "accuracy_pct": 91.64
+    "model": "LightGBM FPS",
+    "MAE": 7.576,
+    "RMSE": 11.08,
+    "R2": 0.9764,
+    "MAPE_pct": 9.09,
+    "accuracy_pct": 90.91
+  },
+  "LowFPS": {
+    "model": "LightGBM 1% Low FPS",
+    "MAE": 6.515,
+    "RMSE": 9.851,
+    "R2": 0.9439,
+    "MAPE_pct": 13.29,
+    "accuracy_pct": 86.71
+  },
+  "Bottleneck": {
+    "model": "Bottleneck Classifier",
+    "accuracy_pct": 100.0
+  },
+  "HealthScore": {
+    "model": "Health Score",
+    "MAE": 1.777,
+    "RMSE": 2.659,
+    "R2": 0.9809,
+    "MAPE_pct": 2.82,
+    "accuracy_pct": 97.18
   },
   "RandomForest": {
-    "model": "RandomForest",
-    "MAE": 16.105,
-    "RMSE": 25.404,
-    "R2": 0.8924,
-    "MAPE_pct": 18.66,
-    "accuracy_pct": 81.34
+    "model": "Random Forest FPS",
+    "MAE": 15.215,
+    "RMSE": 22.855,
+    "R2": 0.8996,
+    "MAPE_pct": 19.37,
+    "accuracy_pct": 80.63
   }
 }
