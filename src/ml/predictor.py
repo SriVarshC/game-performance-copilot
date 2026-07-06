@@ -142,9 +142,11 @@ def _build_feature_vector(raw: dict) -> pd.DataFrame:
     ray_tracing = bool(raw.get("ray_tracing", False))
 
     # ── Derived numeric features (mirror dataset_generator.py) ───────────
-    vram_used_mb = (vram_util / 100.0) * _VRAM_TOTAL_MB
-    gpu_clock_mhz = _estimate_gpu_clock(gpu_temp)
-    gpu_power_watts = _estimate_gpu_power(gpu_util)
+    # Use real values if the caller already knows them (e.g. RecommendationEngine
+    # passing live telemetry), otherwise estimate from what we do have.
+    vram_used_mb = float(raw["vram_used_mb"]) if raw.get("vram_used_mb") else (vram_util / 100.0) * _VRAM_TOTAL_MB
+    gpu_clock_mhz = float(raw["gpu_clock_mhz"]) if raw.get("gpu_clock_mhz") else _estimate_gpu_clock(gpu_temp)
+    gpu_power_watts = float(raw["gpu_power_watts"]) if raw.get("gpu_power_watts") else _estimate_gpu_power(gpu_util)
     cpu_gpu_ratio = round(cpu_util / max(gpu_util, 1), 4)
     thermal_throttle = int(gpu_temp > 85)
 
@@ -219,7 +221,7 @@ def _get_tier(fps: float) -> str:
     return "💀 Unplayable (<15 FPS)"
 
 
-# ─── PUBLIC API ──────────────────────────────────────────────────────────────
+# ─── PUBLIC API (function-based, used by /api/predict) ──────────────────────
 def predict(features: dict) -> dict:
     """
     Run all 4 models and return a unified result dict.
@@ -310,3 +312,64 @@ def predict(features: dict) -> dict:
             "model_name":       _model_name,
             "error":            str(e),
         }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# COMPATIBILITY WRAPPER — used by recommendation_engine.py / recommend.py
+# ═══════════════════════════════════════════════════════════════════════════
+class FPSPredictor:
+    """
+    Class-style adapter around the module-level predict() function above.
+
+    recommendation_engine.py was written against an older class-based
+    predictor API (self.predictor.is_loaded, self.predictor.predict(
+    live_metrics, game_genre, resolution, preset, ray_tracing, upscaling)).
+    Rather than rewrite that (already-correct, well-tested) engine, this
+    class adapts its calling convention onto the current function-based
+    predictor so both can coexist without duplicating model-loading logic.
+    """
+
+    def __init__(self):
+        _ensure_models_loaded()
+
+    @property
+    def is_loaded(self) -> bool:
+        _ensure_models_loaded()
+        return _best_model is not None
+
+    def predict(self, live_metrics: dict, game_genre: str, resolution: str,
+                preset: str, ray_tracing: bool, upscaling: str) -> dict:
+        """
+        Adapts RecommendationEngine's 6-positional-arg call style into the
+        single-dict style predict() above expects. live_metrics uses the
+        HardwareMetrics field names from recommend.py's request schema
+        (gpu_utilization, cpu_utilization, ram_utilization, vram_utilization,
+        gpu_temperature, gpu_clock_mhz, gpu_power_watts, vram_used_mb) —
+        these get remapped to predict()'s expected keys (gpu_usage,
+        cpu_usage, ram_usage, vram_usage, gpu_temp). cpu_temp isn't part of
+        HardwareMetrics, so it falls back to predict()'s internal default.
+        """
+        live_metrics = live_metrics or {}
+
+        raw = {
+            "cpu_usage":  live_metrics.get("cpu_utilization", 50.0),
+            "gpu_usage":  live_metrics.get("gpu_utilization", 70.0),
+            "ram_usage":  live_metrics.get("ram_utilization", 60.0),
+            "vram_usage": live_metrics.get("vram_utilization", 50.0),
+            "gpu_temp":   live_metrics.get("gpu_temperature", 75.0),
+            "resolution": resolution,
+            "game_genre": game_genre,
+            "preset":     preset,
+            "upscaling":  upscaling,
+            "ray_tracing": ray_tracing,
+        }
+        # Pass through already-known values so _build_feature_vector uses
+        # real telemetry instead of re-deriving estimates, when available.
+        if "vram_used_mb" in live_metrics:
+            raw["vram_used_mb"] = live_metrics["vram_used_mb"]
+        if "gpu_clock_mhz" in live_metrics:
+            raw["gpu_clock_mhz"] = live_metrics["gpu_clock_mhz"]
+        if "gpu_power_watts" in live_metrics:
+            raw["gpu_power_watts"] = live_metrics["gpu_power_watts"]
+
+        return predict(raw)

@@ -36,4 +36,4 @@ def test_health_api_version():
     """API version should be 3.0.0."""
     response = client.get("/api/health")
     data = response.json()
-    assert data["api_version"] == "3.0.0"
+    assert data["version"] == "3.0.0"
