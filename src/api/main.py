@@ -1,150 +1,62 @@
-"""
-Game Performance Copilot — FastAPI Backend
-Phase 3: REST API wrapping ML model, telemetry, diagnostics, recommendations.
-Phase 4: Ollama LLM Assistant with live telemetry context injection.
-Phase 4 (upgrade): PostgreSQL + CORS for React frontend.
-Run: uvicorn src.api.main:app --reload --port 8000
-Docs: http://localhost:8000/docs
-"""
-
-import json
-import os
-from contextlib import asynccontextmanager
-from dotenv import load_dotenv
-
-# Load .env file at startup
-load_dotenv()
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
+from pathlib import Path
 
-from src.api.routes import predict, telemetry, recommend, llm, feedback
+load_dotenv()
 
+from src.database.connection import init_db
+from src.api.routes import telemetry, predict, recommend, feedback, analytics
 
-# ── Lifespan ─────────────────────────────────────────────────────────────────
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # STARTUP
-    print("[API] Starting up — preloading LightGBM model...")
-    try:
-        from src.api.routes.predict import get_predictor
-        get_predictor()
-        print("[API] Model preloaded successfully.")
-    except Exception as e:
-        print(f"[API] Warning: Could not preload model at startup: {e}")
+# LLM route is optional — won't crash if Ollama not installed
+try:
+    from src.api.routes import llm
+    LLM_AVAILABLE = True
+except Exception:
+    LLM_AVAILABLE = False
 
-    # Initialize PostgreSQL tables
-    try:
-        from src.database.connection import init_db
-        init_db()
-        print("[API] PostgreSQL tables verified.")
-    except Exception as e:
-        print(f"[API] Warning: Could not initialize DB: {e}")
-
-    print("[API] API ready   → http://localhost:8000")
-    print("[API] Swagger UI  → http://localhost:8000/docs")
-
-    yield  # ← server is running here
-
-    # SHUTDOWN
-    print("[API] Shutting down...")
-    try:
-        from src.api.routes import telemetry as tel_module
-        if tel_module._collector is not None:
-            tel_module._collector.cleanup()
-            print("[API] TelemetryCollector cleaned up.")
-    except Exception:
-        pass
-
-
-# ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(
     title="Game Performance Copilot API",
-    description=(
-        "REST API for the Game Performance Copilot.\n\n"
-        "Provides:\n"
-        "- **FPS Prediction** — LightGBM model, R2=97.5%, MAE=7.8 FPS\n"
-        "- **Live Telemetry** — GPU / CPU / RAM / System metrics in real time\n"
-        "- **AI Diagnostics** — 7 bottleneck types auto-detected\n"
-        "- **Recommendations** — Up to 6 ranked optimizations with ML-estimated FPS gains\n"
-        "- **LLM Assistant** — Natural language Q&A powered by llama3.2\n\n"
-        "Hardware: RTX 3050 Ti + i7-12650H + 16 GB RAM"
-    ),
+    description="AI-powered game performance optimization — RTX 3050 Ti + i7-12650H",
     version="3.0.0",
-    lifespan=lifespan,
 )
 
-# ── CORS ──────────────────────────────────────────────────────────────────────
-# Allow Streamlit (8501) + React dev server (3000) + React prod (80)
+# ─── CORS ────────────────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "http://localhost:5173",   # ← Vite (React) — THIS IS THE FIX
         "http://localhost:3000",
         "http://localhost:8501",
-        "http://localhost:80",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:8501",
-    ],
+        ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ── Routers ───────────────────────────────────────────────────────────────────
-from src.api.routes import analytics  # noqa: E402
+# ─── STARTUP ─────────────────────────────────────────────────────────────────
+@app.on_event("startup")
+async def startup_event():
+    init_db()
 
-app.include_router(predict.router,   prefix="/api", tags=["Prediction"])
-app.include_router(telemetry.router, prefix="/api", tags=["Telemetry"])
-app.include_router(recommend.router, prefix="/api", tags=["Recommendations"])
-app.include_router(llm.router,       prefix="/api", tags=["LLM Assistant"])
-app.include_router(feedback.router,  prefix="/api", tags=["Feedback"])
-app.include_router(analytics.router, prefix="/api", tags=["Analytics"])
-
-
-# ── Health ────────────────────────────────────────────────────────────────────
-@app.get("/api/health", tags=["Health"], summary="API Health Check")
+# ─── HEALTH ──────────────────────────────────────────────────────────────────
+@app.get("/api/health", tags=["Health"])
 def health_check():
-    model_loaded = False
-    model_name   = "unknown"
-    trained_at   = "unknown"
-
-    try:
-        meta_path = os.path.join("models", "model_meta.json")
-        if os.path.exists(meta_path):
-            with open(meta_path, "r") as f:
-                meta = json.load(f)
-            model_name   = meta.get("best_model", "unknown")
-            trained_at   = meta.get("trained_at",  "unknown")
-            model_loaded = True
-    except Exception:
-        pass
-
+    model_loaded = Path("models/best_model.pkl").exists()
     return {
-        "status":       "healthy",
-        "model_loaded": model_loaded,
-        "model_name":   model_name,
-        "trained_at":   trained_at,
-        "api_version":  "3.0.0",
-    }
-
-
-# ── Root ──────────────────────────────────────────────────────────────────────
-@app.get("/", tags=["Root"])
-def root():
-    return {
-        "project": "Game Performance Copilot",
+        "status": "healthy",
         "version": "3.0.0",
-        "endpoints": {
-            "health":      "GET  /api/health",
-            "telemetry":   "GET  /api/telemetry",
-            "history":     "GET  /api/telemetry/history",
-            "diagnostics": "GET  /api/telemetry/diagnostics",
-            "predict":     "POST /api/predict",
-            "recommend":   "POST /api/recommend",
-            "llm":         "POST /api/llm/ask",
-            "analytics":   "GET  /api/analytics",
-            "feedback":    "POST /api/feedback/{id}",
-        },
-        "docs":  "/docs",
-        "redoc": "/redoc",
+        "model_loaded": model_loaded,
+        "database": "postgresql",
+        "model_name": "LightGBM" if model_loaded else "not loaded",
     }
+
+# ─── ROUTERS ─────────────────────────────────────────────────────────────────
+app.include_router(telemetry.router,  prefix="/api", tags=["Telemetry"])
+app.include_router(predict.router,    prefix="/api", tags=["Prediction"])
+app.include_router(recommend.router,  prefix="/api", tags=["Recommendations"])
+app.include_router(feedback.router,   prefix="/api", tags=["Feedback"])
+app.include_router(analytics.router,  prefix="/api", tags=["Analytics"])
+
+if LLM_AVAILABLE:
+    app.include_router(llm.router, prefix="/api", tags=["LLM"])

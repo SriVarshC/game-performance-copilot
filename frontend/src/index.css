@@ -1,0 +1,31 @@
+/* ── Global dark theme ── */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: #0f1117;
+  color: #e0e0e0;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 14px;
+}
+
+/* ── Scrollbar styling ── */
+::-webkit-scrollbar       { width: 6px; }
+::-webkit-scrollbar-track { background: #1a1d23; }
+::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #666; }
+
+/* ── Card base ── */
+.card {
+  background-color: #1a1d23 !important;
+  border: 1px solid #2a2d35 !important;
+  border-radius: 8px !important;
+}
+
+.card-header {
+  background-color: #22252e !important;
+  border-bottom: 1px solid #2a2d35 !important;
+}

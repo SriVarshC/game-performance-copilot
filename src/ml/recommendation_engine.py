@@ -329,7 +329,14 @@ class RecommendationEngine:
                 ))
 
         # ── 7. Diagnostics-Based Recommendations ─────────────────────────────
-        issue_types = {i["issue_type"] for i in issues}
+       
+        
+        issue_types = {
+            i.get("issue_type")
+            for i in issues
+            if isinstance(i, dict) and i.get("issue_type")
+            }
+        
 
         if "CPU_BOTTLENECK" in issue_types:
             recs.append(self._build(

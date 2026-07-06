@@ -14,8 +14,8 @@ from src.database.models import Telemetry as TelemetryModel
 
 router = APIRouter()
 
-# ── Lazy singletons ──────────────────────────────────────────────────────────
-_collector          = None
+# ── Lazy singletons ──────────────────────────────────────────
+_collector = None
 _diagnostics_engine = None
 
 
@@ -35,98 +35,109 @@ def get_diagnostics_engine():
     return _diagnostics_engine
 
 
-# ── Helper — save snapshot to PostgreSQL ─────────────────────────────────────
+# ── Helper — save snapshot to PostgreSQL ─────────────────────
 def _save_telemetry(metrics: dict, db: Session) -> None:
     """Silently saves a telemetry snapshot to PostgreSQL."""
     try:
+        gpu = metrics.get("gpu", {})
+        cpu = metrics.get("cpu", {})
+        memory = metrics.get("memory", {})
+
         row = TelemetryModel(
-            gpu_usage     = metrics.get("gpu_utilization"),
-            vram_used_gb  = (metrics.get("vram_used_mb") or 0) / 1024,
-            gpu_temp      = metrics.get("gpu_temperature"),
-            gpu_clock_mhz = metrics.get("gpu_clock_mhz"),
-            gpu_power_w   = metrics.get("gpu_power_watts"),
-            cpu_usage     = metrics.get("cpu_utilization"),
-            ram_usage     = metrics.get("ram_utilization"),
+            gpu_usage=gpu.get("gpu_utilization"),
+            vram_used_gb=(gpu.get("vram_used_mb", 0) or 0) / 1024,
+            gpu_temp=gpu.get("gpu_temperature"),
+            gpu_clock_mhz=gpu.get("gpu_clock_mhz"),
+            gpu_power_w=gpu.get("gpu_power_watts"),
+            cpu_usage=cpu.get("cpu_utilization"),
+            ram_usage=memory.get("ram_utilization"),
         )
+
         db.add(row)
         db.commit()
+
     except Exception:
         db.rollback()
 
 
-# ── GET /api/telemetry ────────────────────────────────────────────────────────
+# ── GET /api/telemetry ───────────────────────────────────────
 @router.get(
     "/telemetry",
     summary="Get Live Hardware Telemetry",
-    description=(
-        "Returns a real-time hardware snapshot and saves it to PostgreSQL.\n\n"
-        "Includes: GPU utilization, VRAM used/total/%, GPU temp, clock, power — "
-        "CPU utilization (overall + per-core), frequency — "
-        "RAM used/total/%, top background processes."
-    ),
+    description="Returns telemetry in frontend-compatible format.",
 )
 def get_telemetry(db: Session = Depends(get_db)):
     try:
         collector = get_collector()
-        metrics   = collector.collect_all()
+        metrics = collector.collect_all()
+
         _save_telemetry(metrics, db)
-        return {"status": "success", "data": metrics}
+
+        gpu = metrics.get("gpu", {})
+        cpu = metrics.get("cpu", {})
+        memory = metrics.get("memory", {})
+
+        return {
+            "fps": 0,
+            "cpu_usage": cpu.get("cpu_utilization", 0),
+            "gpu_usage": gpu.get("gpu_utilization", 0),
+            "ram_usage": memory.get("ram_utilization", 0),
+            "vram_usage": gpu.get("vram_utilization", 0),
+            "cpu_temp": cpu.get("cpu_temperature"),
+            "gpu_temp": gpu.get("gpu_temperature"),
+            "timestamp": metrics.get("timestamp"),
+        }
+
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Telemetry collection failed: {str(e)}"
+            detail=f"Telemetry collection failed: {str(e)}",
         )
 
 
-# ── GET /api/telemetry/diagnostics ────────────────────────────────────────────
+# ── GET /api/telemetry/diagnostics ───────────────────────────
 @router.get(
     "/telemetry/diagnostics",
     summary="Get Telemetry + AI Diagnostics",
-    description=(
-        "Returns live hardware snapshot plus AI bottleneck detection.\n\n"
-        "Detects: CPU_BOTTLENECK, GPU_BOTTLENECK, VRAM_PRESSURE, "
-        "GPU_THERMAL_THROTTLING, RAM_PRESSURE.\n\n"
-        "Each issue includes: issue_type, severity, confidence, description."
-    ),
 )
 def get_telemetry_with_diagnostics(db: Session = Depends(get_db)):
     try:
         collector = get_collector()
-        engine    = get_diagnostics_engine()
-        metrics   = collector.collect_all()
+        engine = get_diagnostics_engine()
+
+        metrics = collector.collect_all()
         _save_telemetry(metrics, db)
+
         issues = engine.analyze(metrics)
+
         return {
-            "status":       "success",
-            "metrics":      metrics,
+            "status": "success",
+            "metrics": metrics,
             "issues_count": len(issues),
-            "issues":       issues,
+            "issues": issues,
         }
+
     except AttributeError as e:
         raise HTTPException(
             status_code=500,
-            detail=f"DiagnosticsEngine method not found: {e}.",
+            detail=f"DiagnosticsEngine method not found: {e}",
         )
+
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Diagnostics failed: {str(e)}"
+            detail=f"Diagnostics failed: {str(e)}",
         )
 
 
-# ── GET /api/telemetry/history ────────────────────────────────────────────────
+# ── GET /api/telemetry/history ───────────────────────────────
 @router.get(
     "/telemetry/history",
     summary="Get Telemetry History",
-    description=(
-        "Returns historical telemetry readings from PostgreSQL.\n\n"
-        "Use 'hours' to control the time window (1-24).\n"
-        "Use 'limit' to control max records returned (1-1000)."
-    ),
 )
 def get_telemetry_history(
-    hours: int = Query(1,   ge=1,  le=24,   description="Hours of history"),
-    limit: int = Query(500, ge=1,  le=1000, description="Max records"),
+    hours: int = Query(1, ge=1, le=24),
+    limit: int = Query(500, ge=1, le=1000),
     db: Session = Depends(get_db),
 ):
     try:
@@ -142,27 +153,25 @@ def get_telemetry_history(
 
         history = [
             {
-                "id":            r.id,
-                "timestamp":     r.timestamp.isoformat() if r.timestamp else None,
-                "gpu_usage":     r.gpu_usage,
-                "cpu_usage":     r.cpu_usage,
-                "ram_usage":     r.ram_usage,
-                "vram_used_gb":  r.vram_used_gb,
-                "gpu_temp":      r.gpu_temp,
-                "gpu_clock_mhz": r.gpu_clock_mhz,
-                "gpu_power_w":   r.gpu_power_w,
+                "fps": 0,
+                "timestamp": r.timestamp.isoformat() if r.timestamp else None,
+                "cpu_usage": r.cpu_usage or 0,
+                "gpu_usage": r.gpu_usage or 0,
+                "ram_usage": r.ram_usage or 0,
+                "vram_usage": 0,
+                "cpu_temp": None,
+                "gpu_temp": r.gpu_temp,
             }
             for r in records
         ]
 
         return {
-            "status":  "success",
-            "hours":   hours,
-            "count":   len(history),
             "history": history,
+            "count": len(history),
         }
+
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Telemetry history failed: {str(e)}"
+            detail=f"Telemetry history failed: {str(e)}",
         )
