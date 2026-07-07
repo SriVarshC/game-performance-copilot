@@ -38,12 +38,17 @@ jobs:
       # ── 3. Install dependencies ───────────────────────────────
       - name: Install dependencies
         run: pip install -r requirements.txt
-      # ── 4. Run tests ─────────────────────────────────────────
+      # ── 4. Run database migrations ────────────────────────────
+      - name: Run Alembic migrations
+        env:
+          DATABASE_URL: postgresql://postgres:123@localhost:5432/gamecopilot
+        run: alembic upgrade head
+      # ── 5. Run tests ─────────────────────────────────────────
       - name: Run pytest
         env:
           DATABASE_URL: postgresql://postgres:123@localhost:5432/gamecopilot
         run: pytest tests/ -v --tb=short
-      # ── 5. Upload test results (optional, visible in Actions) ─
+      # ── 6. Upload test results (optional, visible in Actions) ─
       - name: Upload pytest results
         if: always()             # runs even if tests fail
         uses: actions/upload-artifact@v4
