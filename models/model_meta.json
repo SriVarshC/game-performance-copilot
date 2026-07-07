@@ -1,6 +1,6 @@
 {
   "best_model": "LightGBM",
-  "trained_at": "2026-07-02T17:50:24.301201",
+  "trained_at": "2026-07-06T12:34:27.188523",
   "model_file": "best_model.pkl",
   "low_fps_model": "low_fps_model.pkl",
   "bottleneck_model": "bottleneck_model.pkl",
