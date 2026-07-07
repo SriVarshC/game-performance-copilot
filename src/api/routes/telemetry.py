@@ -10,7 +10,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from src.database.connection import get_db
-from src.database.models import Telemetry as TelemetryModel
+from src.database.models import Telemetry as TelemetryModel, User
+from src.api.dependencies import get_current_user
 
 router = APIRouter()
 
@@ -66,7 +67,10 @@ def _save_telemetry(metrics: dict, db: Session) -> None:
     summary="Get Live Hardware Telemetry",
     description="Returns telemetry in frontend-compatible format.",
 )
-def get_telemetry(db: Session = Depends(get_db)):
+def get_telemetry(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     try:
         collector = get_collector()
         metrics = collector.collect_all()
@@ -100,7 +104,10 @@ def get_telemetry(db: Session = Depends(get_db)):
     "/telemetry/diagnostics",
     summary="Get Telemetry + AI Diagnostics",
 )
-def get_telemetry_with_diagnostics(db: Session = Depends(get_db)):
+def get_telemetry_with_diagnostics(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     try:
         collector = get_collector()
         engine = get_diagnostics_engine()
@@ -139,6 +146,7 @@ def get_telemetry_history(
     hours: int = Query(1, ge=1, le=24),
     limit: int = Query(500, ge=1, le=1000),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     try:
         since = datetime.utcnow() - timedelta(hours=hours)

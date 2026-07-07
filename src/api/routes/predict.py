@@ -4,8 +4,8 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from src.ml.predictor import predict
-from src.api.dependencies import get_db
-from src.database.models import Prediction
+from src.api.dependencies import get_db, get_current_user
+from src.database.models import Prediction, User
 
 router = APIRouter()
 
@@ -38,7 +38,11 @@ class PredictResponse(BaseModel):
 
 
 @router.post("/predict", response_model=PredictResponse)
-def predict_fps(request: PredictRequest, db: Session = Depends(get_db)):
+def predict_fps(
+    request: PredictRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     try:
         features = request.model_dump()
 

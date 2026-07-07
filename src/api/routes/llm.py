@@ -7,13 +7,18 @@ so answers are specific to the user's actual hardware state.
 Phase 7: Also retrieves relevant knowledge base context via FAISS
 semantic search, grounding answers in vetted, hardware-specific
 guidance rather than the LLM's general training knowledge alone.
+
+Phase 8: Requires a logged-in user.
 """
 
 import time
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+
+from src.database.models import User
+from src.api.dependencies import get_current_user
 
 router = APIRouter()
 
@@ -69,7 +74,10 @@ class AskResponse(BaseModel):
         "- Should I enable DLSS or lower resolution for more FPS?"
     ),
 )
-def ask_llm(request: AskRequest):
+def ask_llm(
+    request: AskRequest,
+    current_user: User = Depends(get_current_user),
+):
     start_time = time.time()
 
     metrics = None

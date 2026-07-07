@@ -6,7 +6,7 @@ from pathlib import Path
 load_dotenv()
 
 from src.database.connection import init_db
-from src.api.routes import telemetry, predict, recommend, feedback, analytics
+from src.api.routes import telemetry, predict, recommend, feedback, analytics, auth
 
 # LLM route is optional — won't crash if Ollama not installed
 try:
@@ -40,24 +40,18 @@ async def startup_event():
     init_db()
 
     # Phase 7 — preload the RAG knowledge base + embedding model here,
-    # at startup, rather than lazily on the first chat request. The
-    # embedding model load alone takes several seconds; doing it lazily
-    # meant the very first Copilot question stacked that load time on
-    # top of telemetry fetch + Ollama's own response time, which could
-    # exceed the frontend's 30s request timeout. Preloading here means
-    # only uvicorn's startup takes the hit, and every real chat request
-    # afterward is fast.
+    # at startup, rather than lazily on the first chat request.
     if LLM_AVAILABLE:
         try:
             from src.llm.knowledge_base import _load_index, _get_embedder
-            _get_embedder()   # loads all-MiniLM-L6-v2 into memory now
-            _load_index()     # loads the FAISS index + chunks.json now
+            _get_embedder()
+            _load_index()
             print("[startup] Knowledge base preloaded successfully.")
         except Exception as e:
-            # Non-fatal — Copilot still works without RAG context if this fails
             print(f"[startup] WARNING: Knowledge base preload failed: {e}")
 
-# ─── HEALTH ──────────────────────────────────────────────────────────────────
+# ─── HEALTH (stays public — no auth required, so the frontend can show ──────
+# API status before the user has logged in) ───────────────────────────────────
 @app.get("/api/health", tags=["Health"])
 def health_check():
     model_loaded = Path("models/best_model.pkl").exists()
@@ -70,6 +64,10 @@ def health_check():
     }
 
 # ─── ROUTERS ─────────────────────────────────────────────────────────────────
+# auth router is public (register/login must work without a token already)
+app.include_router(auth.router,       prefix="/api", tags=["Auth"])
+
+# everything below now requires a valid JWT (see get_current_user in each route)
 app.include_router(telemetry.router,  prefix="/api", tags=["Telemetry"])
 app.include_router(predict.router,    prefix="/api", tags=["Prediction"])
 app.include_router(recommend.router,  prefix="/api", tags=["Recommendations"])

@@ -4,16 +4,18 @@
 
 import { useEffect, useState } from "react";
 import { getHealth } from "../services/api";
+import { useAuth } from "../contexts/AuthContext";
 
 function Navbar() {
   const [apiStatus, setApiStatus] = useState<"online" | "offline" | "checking">("checking");
   const [modelName, setModelName] = useState<string>("");
+  const { username, isAuthenticated, logout } = useAuth();
 
   useEffect(() => {
-    
+
     const check = async () => {
       try {
-        const data = await getHealth();          
+        const data = await getHealth();
         if (data.status === "healthy") {
           setApiStatus("online");
           setModelName(data.model_name ?? "LightGBM");
@@ -81,7 +83,7 @@ function Navbar() {
         </div>
       </div>
 
-      {/* Right — API status + model badge */}
+      {/* Right — API status + model badge + auth */}
       <div className="d-flex align-items-center gap-3">
         {/* Model badge */}
         {modelName && (
@@ -114,6 +116,29 @@ function Navbar() {
             {statusLabel}
           </span>
         </div>
+
+        {/* Phase 8: user + logout */}
+        {isAuthenticated && (
+          <div className="d-flex align-items-center gap-2">
+            <span style={{ fontSize: "12px", color: "#888" }}>
+              👤 {username}
+            </span>
+            <button
+              onClick={logout}
+              style={{
+                backgroundColor: "#22252e",
+                border: "1px solid #2a2d35",
+                color: "#888",
+                fontSize: "11px",
+                padding: "4px 10px",
+                borderRadius: "6px",
+                cursor: "pointer",
+              }}
+            >
+              Log Out
+            </button>
+          </div>
+        )}
       </div>
     </nav>
   );

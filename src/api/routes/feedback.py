@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, case
 
 from src.database.connection import get_db
-from src.database.models import Recommendation as RecommendationModel
+from src.database.models import Recommendation as RecommendationModel, User
+from src.api.dependencies import get_current_user
 
 router = APIRouter()
 
@@ -29,6 +30,7 @@ def submit_feedback(
     recommendation_id: int,
     body: FeedbackRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     try:
         rec = (
@@ -64,7 +66,10 @@ def submit_feedback(
     "/feedback/summary",
     summary="Get Feedback Analytics Summary",
 )
-def get_feedback_summary(db: Session = Depends(get_db)):
+def get_feedback_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     try:
         total = db.query(
             func.count(RecommendationModel.recommendation_id)

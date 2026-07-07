@@ -11,12 +11,64 @@ import type {
   AnalyticsData,
   FeedbackSummary,
   HealthResponse,
+  RegisterRequest,
+  LoginRequest,
+  TokenResponse,
 } from "../types";
 
 const api = axios.create({
   baseURL: "http://localhost:8000/api",
   timeout: 30000,
 });
+
+// Copilot requests can run much slower when Ollama is running inside
+// Docker without confirmed GPU-accelerated inference (CPU-tier token
+// speeds on a RAG-enriched ~1200 token prompt can take 60-90s). A
+// separate, longer-timeout instance is used only for /llm/ask so the
+// rest of the app keeps a snappy 30s timeout.
+const llmApi = axios.create({
+  baseURL: "http://localhost:8000/api",
+  timeout: 120000,
+});
+
+const attachAuth = (config: any) => {
+  const token = localStorage.getItem("gc_token");
+  if (token) {
+    config.headers = config.headers ?? {};
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+};
+
+const handle401 = (error: any) => {
+  if (error?.response?.status === 401) {
+    localStorage.removeItem("gc_token");
+    localStorage.removeItem("gc_username");
+    if (window.location.pathname !== "/login") {
+      window.location.href = "/login";
+    }
+  }
+  return Promise.reject(error);
+};
+
+// ─── Phase 8: attach JWT to every outgoing request ──────────────────────────
+api.interceptors.request.use(attachAuth);
+llmApi.interceptors.request.use(attachAuth);
+
+// ─── Phase 8: on 401, clear stale token and bounce to login ─────────────────
+api.interceptors.response.use((response) => response, handle401);
+llmApi.interceptors.response.use((response) => response, handle401);
+
+// ─── Auth ────────────────────────────────────────────────────────────────────
+export const postRegister = async (data: RegisterRequest): Promise<TokenResponse> => {
+  const res = await api.post("/auth/register", data);
+  return res.data as TokenResponse;
+};
+
+export const postLogin = async (data: LoginRequest): Promise<TokenResponse> => {
+  const res = await api.post("/auth/login", data);
+  return res.data as TokenResponse;
+};
 
 // ─── Health ──────────────────────────────────────────────────────────────────
 export const getHealth = async (): Promise<HealthResponse> => {
@@ -27,7 +79,6 @@ export const getHealth = async (): Promise<HealthResponse> => {
 // ─── Telemetry ───────────────────────────────────────────────────────────────
 export const getTelemetry = async (): Promise<TelemetryData> => {
   const res = await api.get("/telemetry");
-  // Handle both wrapped {status, data:{...}} and direct {...} responses
   return (res.data?.data as TelemetryData) ?? (res.data as TelemetryData);
 };
 
@@ -66,7 +117,7 @@ export const postRecommend = async (
 export const postLLMQuestion = async (
   data: LLMRequest
 ): Promise<LLMResponse> => {
-  const res = await api.post("/llm/ask", data);
+  const res = await llmApi.post("/llm/ask", data);
   return res.data as LLMResponse;
 };
 

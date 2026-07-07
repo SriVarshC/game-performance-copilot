@@ -11,7 +11,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from src.database.connection import get_db
-from src.database.models import Recommendation as RecommendationModel
+from src.database.models import Recommendation as RecommendationModel, User
+from src.api.dependencies import get_current_user
 
 router = APIRouter()
 
@@ -66,6 +67,7 @@ class RecommendRequest(BaseModel):
 def get_recommendations(
     request: RecommendRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     try:
         engine = get_rec_engine()

@@ -2,14 +2,17 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func, text
 
-from src.api.dependencies import get_db
-from src.database.models import Telemetry, Prediction, Recommendation
+from src.api.dependencies import get_db, get_current_user
+from src.database.models import Telemetry, Prediction, Recommendation, User
 
 router = APIRouter()
 
 
 @router.get("/analytics", tags=["Analytics"])
-def get_analytics(db: Session = Depends(get_db)):
+def get_analytics(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
 
     # ── Telemetry stats ───────────────────────────────────────────────────────
     tel_count    = 0
@@ -95,11 +98,12 @@ def get_analytics(db: Session = Depends(get_db)):
     }
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# NEW — Phase 2: Prediction history (health score over time)
-# ═══════════════════════════════════════════════════════════════════════════
 @router.get("/predictions/history", tags=["Analytics"])
-def get_predictions_history(limit: int = 50, db: Session = Depends(get_db)):
+def get_predictions_history(
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """
     Returns the most recent N predictions in chronological order, with
     health_score, predicted_fps, and bottleneck_class — used to chart
@@ -112,7 +116,6 @@ def get_predictions_history(limit: int = 50, db: Session = Depends(get_db)):
             .limit(limit)
             .all()
         )
-        # reverse so the chart reads left-to-right chronologically
         predictions = [
             {
                 "created_at":       r.created_at.isoformat() if r.created_at else None,

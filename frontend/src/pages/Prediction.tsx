@@ -106,7 +106,7 @@ function Prediction() {
         )
       );
 
-      const data: number[][] = results.map((r, idx) => {
+      const data: number[][] = results.map((r: PredictionResult, idx: number) => {
         const resIdx    = RESOLUTIONS.indexOf(combos[idx].resolution);
         const presetIdx = PRESETS.indexOf(combos[idx].preset);
         return [resIdx, presetIdx, Math.round(r.predicted_fps)];

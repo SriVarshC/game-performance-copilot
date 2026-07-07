@@ -14,3 +14,12 @@ lightgbm
 scikit-learn
 joblib
 httpx
+psycopg2-binary==2.9.9
+ollama
+faiss-cpu
+langchain
+langchain-community
+sentence-transformers
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart

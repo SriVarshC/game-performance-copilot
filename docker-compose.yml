@@ -1,38 +1,97 @@
-
-
 services:
 
-  # ── FastAPI Backend ────────────────────────────────────────
-  api:
+  postgres:
+    image: postgres:16
+    container_name: gamecopilot-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: gamecopilot
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: gamecopilot-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    # GPU passthrough — without this, Ollama runs llama3.2 on CPU only
+    # inside the container, which is dramatically slower than local runs
+    # and can exceed the frontend's request timeout.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  backend:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: game-copilot-api
+    container_name: gamecopilot-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/gamecopilot
+      SECRET_KEY: ${SECRET_KEY}
+      OLLAMA_HOST: http://ollama:11434
+      ACCESS_TOKEN_EXPIRE_MINUTES: "120"
     ports:
       - "8000:8000"
     volumes:
-      # SQLite database persists on your machine, not inside container
+      - ./models:/app/models
       - ./data:/app/data
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "python", "-c",
-             "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
+    # GPU passthrough — lets pynvml inside the container see the host's
+    # NVIDIA GPU for live telemetry (verified working via `docker run
+    # --gpus=all nvidia/cuda ... nvidia-smi` before enabling this).
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
-  # ── Streamlit Dashboard ────────────────────────────────────
-  dashboard:
+  frontend:
     build:
-      context: .
-      dockerfile: Dockerfile.dashboard
-    container_name: game-copilot-dashboard
-    ports:
-      - "8501:8501"
-    volumes:
-      - ./data:/app/data
-    depends_on:
-      api:
-        condition: service_healthy
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: gamecopilot-frontend
     restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: gamecopilot-pgadmin
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@gamecopilot.com
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
+    ports:
+      - "5050:80"
+
+volumes:
+  postgres_data:
+  ollama_data:
