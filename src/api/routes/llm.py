@@ -3,6 +3,10 @@ POST /api/llm/ask
 Natural language performance Q&A powered by Ollama (llama3.2).
 Fetches live telemetry + diagnostics and injects them as context
 so answers are specific to the user's actual hardware state.
+
+Phase 7: Also retrieves relevant knowledge base context via FAISS
+semantic search, grounding answers in vetted, hardware-specific
+guidance rather than the LLM's general training knowledge alone.
 """
 
 import time
@@ -41,6 +45,7 @@ class AskResponse(BaseModel):
     question:               str
     telemetry_included:     bool
     issues_detected:        int
+    knowledge_sources:      list[str]
     response_time_seconds:  float
 
 
@@ -53,6 +58,8 @@ class AskResponse(BaseModel):
         "Natural language Q&A about PC gaming performance powered by llama3.2.\n\n"
         "With include_telemetry=true, live GPU/CPU/RAM metrics and detected bottlenecks "
         "are injected into the prompt — so answers reference YOUR actual numbers.\n\n"
+        "Phase 7: Also retrieves relevant knowledge base context via FAISS semantic "
+        "search, grounding answers in vetted hardware-specific guidance.\n\n"
         "Example questions:\n"
         "- Why is my GPU at 50%?\n"
         "- Why am I getting low FPS in Cyberpunk?\n"
@@ -85,13 +92,24 @@ def ask_llm(request: AskRequest):
             metrics = None
             issues  = []
 
-    # ── Step 2: Build prompt ──────────────────────────────────────────────────
+    # ── Step 2: Retrieve relevant knowledge base context (Phase 7) ────────────
+    retrieved_docs = []
+    try:
+        from src.llm.knowledge_base import retrieve
+        retrieved_docs = retrieve(request.question, k=3)
+    except Exception as e:
+        # Non-fatal: LLM still answers using general knowledge + telemetry only
+        print(f"[LLM] Warning: Knowledge base retrieval unavailable. {e}")
+        retrieved_docs = []
+
+    # ── Step 3: Build prompt ──────────────────────────────────────────────────
     try:
         from src.llm.prompt_builder import build_prompt
         messages = build_prompt(
             question=request.question,
             metrics=metrics,
             issues=issues,
+            retrieved_docs=retrieved_docs,
         )
     except Exception as e:
         raise HTTPException(
@@ -99,7 +117,7 @@ def ask_llm(request: AskRequest):
             detail=f"Prompt building failed: {str(e)}"
         )
 
-    # ── Step 3: Call Ollama ───────────────────────────────────────────────────
+    # ── Step 4: Call Ollama ───────────────────────────────────────────────────
     try:
         import ollama
 
@@ -148,5 +166,6 @@ def ask_llm(request: AskRequest):
         question=request.question,
         telemetry_included=(metrics is not None),
         issues_detected=len(issues),
+        knowledge_sources=list({d["source"] for d in retrieved_docs}),
         response_time_seconds=elapsed,
     )

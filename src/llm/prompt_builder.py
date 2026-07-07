@@ -1,7 +1,8 @@
 """
 Prompt Builder for Game Performance Copilot LLM Assistant.
-Injects live telemetry + diagnostics into prompts so the LLM
-gives hardware-specific answers instead of generic advice.
+Injects live telemetry + diagnostics + retrieved knowledge base context
+into prompts so the LLM gives hardware-specific, grounded answers instead
+of generic advice.
 """
 
 from typing import Any, Dict, List, Optional
@@ -44,6 +45,8 @@ RESPONSE RULES:
 6. Keep answers under 200 words unless a detailed explanation is genuinely needed
 7. Write in plain conversational English — no markdown headers, no bullet symbols
 8. If asked about something unrelated to PC gaming performance, politely redirect
+9. If relevant knowledge base context is provided below, prefer it over your own
+   general knowledge — it reflects vetted, hardware-specific guidance for this exact system
 """
 
 
@@ -52,10 +55,19 @@ def build_prompt(
     question: str,
     metrics:  Optional[Dict[str, Any]]       = None,
     issues:   Optional[List[Dict[str, Any]]] = None,
+    retrieved_docs: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Dict[str, str]]:
     """
     Build the messages list for the Ollama chat API.
-    Injects live telemetry + detected issues into the system prompt.
+    Injects live telemetry + detected issues + retrieved knowledge base
+    context into the system prompt.
+
+    Args:
+        question:       The user's question
+        metrics:        Live telemetry dict (optional)
+        issues:         AI-detected diagnostic issues (optional)
+        retrieved_docs: Knowledge base chunks from knowledge_base.retrieve(),
+                         e.g. [{"text": "...", "source": "...", "score": ...}]
 
     Returns:
         [
@@ -76,6 +88,10 @@ def build_prompt(
         system_content += _format_issues(issues)
     else:
         system_content += "\n\nCURRENT AI-DETECTED ISSUES: None — system appears optimal.\n"
+
+    if retrieved_docs:
+        system_content += "\n\nRELEVANT KNOWLEDGE BASE CONTEXT (use this to ground your answer):\n"
+        system_content += _format_retrieved_docs(retrieved_docs)
 
     return [
         {"role": "system", "content": system_content},
@@ -173,3 +189,17 @@ def _format_issues(issues: List[Dict[str, Any]]) -> str:
         )
 
     return "\n".join(lines)
+
+
+def _format_retrieved_docs(docs: List[Dict[str, Any]]) -> str:
+    """Format FAISS-retrieved knowledge base chunks into clean text for the LLM."""
+    if not docs:
+        return "No relevant knowledge base entries found."
+
+    lines = []
+    for i, doc in enumerate(docs, 1):
+        source = doc.get("source", "unknown")
+        text   = doc.get("text", "")
+        lines.append(f"--- Context {i} (from {source}) ---\n{text}")
+
+    return "\n\n".join(lines)

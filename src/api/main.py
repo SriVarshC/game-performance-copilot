@@ -39,6 +39,24 @@ app.add_middleware(
 async def startup_event():
     init_db()
 
+    # Phase 7 — preload the RAG knowledge base + embedding model here,
+    # at startup, rather than lazily on the first chat request. The
+    # embedding model load alone takes several seconds; doing it lazily
+    # meant the very first Copilot question stacked that load time on
+    # top of telemetry fetch + Ollama's own response time, which could
+    # exceed the frontend's 30s request timeout. Preloading here means
+    # only uvicorn's startup takes the hit, and every real chat request
+    # afterward is fast.
+    if LLM_AVAILABLE:
+        try:
+            from src.llm.knowledge_base import _load_index, _get_embedder
+            _get_embedder()   # loads all-MiniLM-L6-v2 into memory now
+            _load_index()     # loads the FAISS index + chunks.json now
+            print("[startup] Knowledge base preloaded successfully.")
+        except Exception as e:
+            # Non-fatal — Copilot still works without RAG context if this fails
+            print(f"[startup] WARNING: Knowledge base preload failed: {e}")
+
 # ─── HEALTH ──────────────────────────────────────────────────────────────────
 @app.get("/api/health", tags=["Health"])
 def health_check():
