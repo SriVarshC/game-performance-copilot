@@ -5,8 +5,9 @@
 
 import { useEffect, useState } from "react";
 import ReactECharts from "echarts-for-react";
-import { getAnalytics } from "../services/api";
+import { getAnalytics, getPredictionsHistory } from "../services/api";
 import type { AnalyticsData } from "../types";
+import type { PredictionHistoryItem } from "../services/api";
 import MetricCard from "../components/MetricCard";
 
 // ── Bottleneck colors ────────────────────────────────────────
@@ -24,6 +25,9 @@ function Analytics() {
   const [error,      setError]      = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<string>("--");
 
+  // ── Phase 2: health score history ──────────────────────────
+  const [healthHistory, setHealthHistory] = useState<PredictionHistoryItem[]>([]);
+
   const fetchAnalytics = async () => {
     try {
       const res = await getAnalytics(); // res IS AnalyticsData — no .data needed
@@ -37,9 +41,25 @@ function Analytics() {
     }
   };
 
+  const fetchHealthHistory = async () => {
+    try {
+      const res = await getPredictionsHistory(50);
+      const withScores = res.predictions.filter(
+        (p) => p.health_score !== null && p.health_score !== undefined
+      );
+      setHealthHistory(withScores);
+    } catch {
+      // non-fatal — chart just shows "no data" state
+    }
+  };
+
   useEffect(() => {
     fetchAnalytics();
-    const interval = setInterval(fetchAnalytics, 30000);
+    fetchHealthHistory();
+    const interval = setInterval(() => {
+      fetchAnalytics();
+      fetchHealthHistory();
+    }, 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -133,6 +153,64 @@ function Analytics() {
     ],
   });
 
+  // ── Phase 2: Health Score Over Time Chart ──────────────────
+  const buildHealthHistoryOption = (history: PredictionHistoryItem[]) => {
+    const times  = history.map((h) =>
+      h.created_at ? new Date(h.created_at).toLocaleTimeString() : ""
+    );
+    const scores = history.map((h) => h.health_score ?? 0);
+
+    return {
+      backgroundColor: "transparent",
+      title: {
+        text: "Health Score Over Time",
+        textStyle: { color: "#ccc", fontSize: 13, fontWeight: 600 },
+        left: 8,
+        top: 8,
+      },
+      tooltip: {
+        trigger: "axis",
+        backgroundColor: "#22252e",
+        borderColor: "#2a2d35",
+        textStyle: { color: "#e0e0e0" },
+        formatter: (params: any) => {
+          const p = params[0];
+          return `${p.axisValue}<br/>Health Score: <b>${p.value}</b>/100`;
+        },
+      },
+      grid: { top: 48, left: 40, right: 16, bottom: 56 },
+      xAxis: {
+        type: "category",
+        data: times,
+        axisLabel: { color: "#666", fontSize: 9, rotate: 45 },
+        axisLine:  { lineStyle: { color: "#2a2d35" } },
+      },
+      yAxis: {
+        type: "value",
+        min: 0,
+        max: 100,
+        axisLabel: { color: "#666", fontSize: 10 },
+        splitLine:  { lineStyle: { color: "#2a2d35", type: "dashed" } },
+      },
+      series: [
+        {
+          type: "bar",
+          data: scores,
+          barMaxWidth: 18,
+          itemStyle: {
+            borderRadius: [4, 4, 0, 0],
+            color: (params: any) => {
+              const v = params.value as number;
+              if (v >= 70) return "#198754";
+              if (v >= 50) return "#ffc107";
+              return "#dc3545";
+            },
+          },
+        },
+      ],
+    };
+  };
+
   // ── Loading state ──────────────────────────────────────────
   if (loading) {
     return (
@@ -162,7 +240,7 @@ function Analytics() {
         </div>
         <button
           className="btn btn-sm"
-          onClick={fetchAnalytics}
+          onClick={() => { fetchAnalytics(); fetchHealthHistory(); }}
           style={{
             backgroundColor: "#22252e",
             color: "#888",
@@ -295,6 +373,36 @@ function Analytics() {
                   style={{ height: "280px", width: "100%" }}
                   opts={{ renderer: "canvas" }}
                 />
+              </div>
+            </div>
+          </div>
+
+          {/* ── Phase 2: Health Score Over Time ────────────── */}
+          <div className="row g-3 mb-4">
+            <div className="col-12">
+              <div
+                className="card"
+                style={{
+                  backgroundColor: "#1a1d23",
+                  border: "1px solid #2a2d35",
+                  borderRadius: "10px",
+                  padding: "8px",
+                }}
+              >
+                {healthHistory.length > 0 ? (
+                  <ReactECharts
+                    option={buildHealthHistoryOption(healthHistory)}
+                    style={{ height: "260px", width: "100%" }}
+                    opts={{ renderer: "canvas" }}
+                  />
+                ) : (
+                  <div
+                    className="d-flex align-items-center justify-content-center"
+                    style={{ height: "260px", color: "#444", fontSize: "13px" }}
+                  >
+                    No prediction history yet — run some predictions on the Prediction page
+                  </div>
+                )}
               </div>
             </div>
           </div>

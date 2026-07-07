@@ -93,3 +93,36 @@ def get_analytics(db: Session = Depends(get_db)):
             "helpful_percentage": helpful_pct,
         },
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NEW — Phase 2: Prediction history (health score over time)
+# ═══════════════════════════════════════════════════════════════════════════
+@router.get("/predictions/history", tags=["Analytics"])
+def get_predictions_history(limit: int = 50, db: Session = Depends(get_db)):
+    """
+    Returns the most recent N predictions in chronological order, with
+    health_score, predicted_fps, and bottleneck_class — used to chart
+    system health trends over time on the Analytics page.
+    """
+    try:
+        rows = (
+            db.query(Prediction)
+            .order_by(Prediction.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+        # reverse so the chart reads left-to-right chronologically
+        predictions = [
+            {
+                "created_at":       r.created_at.isoformat() if r.created_at else None,
+                "health_score":     r.health_score,
+                "predicted_fps":    r.predicted_fps,
+                "bottleneck_class": r.bottleneck_class,
+            }
+            for r in reversed(rows)
+        ]
+        return {"status": "success", "predictions": predictions}
+    except Exception as e:
+        print(f"[analytics] predictions history query error: {e}")
+        return {"status": "error", "predictions": []}

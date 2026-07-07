@@ -88,3 +88,23 @@ export const getAnalytics = async (): Promise<AnalyticsData> => {
   const res = await api.get("/analytics");
   return res.data as AnalyticsData;
 };
+
+// ─── Prediction History (Phase 2 — health score over time) ─────────────────
+export interface PredictionHistoryItem {
+  created_at:       string;
+  health_score:     number | null;
+  predicted_fps:    number | null;
+  bottleneck_class: string | null;
+}
+
+export interface PredictionHistoryResponse {
+  status:      string;
+  predictions: PredictionHistoryItem[];
+}
+
+export const getPredictionsHistory = async (
+  limit = 50
+): Promise<PredictionHistoryResponse> => {
+  const res = await api.get("/predictions/history", { params: { limit } });
+  return res.data as PredictionHistoryResponse;
+};

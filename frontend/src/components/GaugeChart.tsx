@@ -1,5 +1,6 @@
 // ═══════════════════════════════════════════════════════════
-// GaugeChart — ECharts gauge for CPU%, GPU%, RAM%, VRAM%
+// GaugeChart — ECharts gauge for CPU%, GPU%, RAM%, VRAM%, and
+// GPU Temperature (via mode="temperature")
 // ═══════════════════════════════════════════════════════════
 
 import ReactECharts from "echarts-for-react";
@@ -9,25 +10,45 @@ interface GaugeChartProps {
   value:  number | null;
   color?: string;
   max?:   number;
+  /**
+   * "percent"     — default. Thresholds at 50/75/90 (of `max`).
+   *                 Used for CPU/GPU/RAM/VRAM usage gauges.
+   * "temperature" — Thresholds at 70/80/85°C, matching the
+   *                 thermal-throttle logic in dataset_generator.py
+   *                 (throttling begins at 85°C).
+   */
+  mode?: "percent" | "temperature";
 }
 
 function GaugeChart({
   title,
   value,
-  color = "#6f42c1",
+  color,
   max   = 100,
+  mode  = "percent",
 }: GaugeChartProps) {
   const safeValue = value ?? 0;
 
-  // Dynamic color based on usage level
-  const getColor = (val: number) => {
-    if (val >= 90) return "#dc3545";   // red — critical
-    if (val >= 75) return "#fd7e14";   // orange — high
-    if (val >= 50) return "#ffc107";   // yellow — medium
-    return color;                       // default — healthy
+  // ── Healthy/idle band is now genuinely green, not brand purple —
+  // gauges read green → yellow → orange → red at a glance. ──────────
+  const HEALTHY_GREEN = "#28a745";
+
+  const getColor = (val: number): string => {
+    if (mode === "temperature") {
+      if (val >= 85) return "#dc3545";   // red — thermal throttling zone
+      if (val >= 80) return "#fd7e14";   // orange — approaching throttle
+      if (val >= 70) return "#ffc107";   // yellow — warm
+      return color ?? HEALTHY_GREEN;      // green — safe operating temp
+    }
+    // percent mode (CPU/GPU/RAM/VRAM usage)
+    if (val >= 90) return "#dc3545";     // red — critical
+    if (val >= 75) return "#fd7e14";     // orange — high
+    if (val >= 50) return "#ffc107";     // yellow — medium
+    return color ?? HEALTHY_GREEN;        // green — healthy/idle
   };
 
   const activeColor = getColor(safeValue);
+  const unitSuffix = mode === "temperature" ? "°C" : "%";
 
   const option = {
     backgroundColor: "transparent",
@@ -86,7 +107,7 @@ function GaugeChart({
         detail: {
           valueAnimation: true,
           formatter: (val: number) =>
-            val === 0 && value === null ? "N/A" : `${val}%`,
+            val === 0 && value === null ? "N/A" : `${val}${unitSuffix}`,
           color: "#ffffff",
           fontSize: 18,
           fontWeight: 700,

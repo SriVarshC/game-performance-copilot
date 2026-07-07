@@ -95,15 +95,19 @@ const Dashboard: React.FC = () => {
       </div>
 
       {/* ── Gauge row ────────────────────────────────────────────────────── */}
+      {/* Now 5 gauges: CPU/GPU/RAM/VRAM use percent thresholds (green <50,
+          yellow 50-75, orange 75-90, red 90+); GPU Temp uses temperature
+          thresholds tied to the actual thermal-throttle point (85°C). */}
       <div className="row g-3 mb-4">
         {[
-          { title: "CPU",  value: telemetry?.cpu_usage  ?? 0 },
-          { title: "GPU",  value: telemetry?.gpu_usage  ?? 0 },
-          { title: "RAM",  value: telemetry?.ram_usage  ?? 0 },
-          { title: "VRAM", value: telemetry?.vram_usage ?? 0 },
-        ].map(({ title, value }) => (
-          <div key={title} className="col-6 col-md-3">
-            <GaugeChart title={title} value={value} max={100} />
+          { title: "CPU",  value: telemetry?.cpu_usage  ?? 0, mode: "percent" as const,     max: 100 },
+          { title: "GPU",  value: telemetry?.gpu_usage  ?? 0, mode: "percent" as const,     max: 100 },
+          { title: "RAM",  value: telemetry?.ram_usage  ?? 0, mode: "percent" as const,     max: 100 },
+          { title: "VRAM", value: telemetry?.vram_usage ?? 0, mode: "percent" as const,     max: 100 },
+          { title: "GPU Temp", value: telemetry?.gpu_temp ?? 0, mode: "temperature" as const, max: 100 },
+        ].map(({ title, value, mode, max }) => (
+          <div key={title} className="col-6 col-md-4 col-xl">
+            <GaugeChart title={title} value={value} max={max} mode={mode} />
           </div>
         ))}
       </div>

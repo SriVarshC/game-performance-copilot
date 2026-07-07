@@ -4,6 +4,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { useState } from "react";
+import ReactECharts from "echarts-for-react";
 import { postPredict } from "../services/api";
 import type { PredictionRequest, PredictionResult } from "../types";
 import { TIER_COLORS } from "../types";
@@ -44,6 +45,11 @@ function Prediction() {
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState<string | null>(null);
 
+  // ── Phase 2: FPS heatmap state ─────────────────────────────
+  const [heatmapData,    setHeatmapData]    = useState<number[][] | null>(null);
+  const [heatmapLoading, setHeatmapLoading] = useState(false);
+  const [heatmapError,   setHeatmapError]   = useState<string | null>(null);
+
   // ── Input handlers ────────────────────────────────────────
   const handleNumber = (key: keyof PredictionRequest, val: string) => {
     setForm((f) => ({ ...f, [key]: val === "" ? 0 : parseFloat(val) }));
@@ -78,6 +84,89 @@ function Prediction() {
       setLoading(false);
     }
   };
+
+  // ── Phase 2: Generate heatmap ───────────────────────────────
+  // Fires one prediction per (resolution, preset) combination, holding
+  // genre / upscaling / ray tracing / hardware metrics fixed at current
+  // form values. Renders predicted FPS as a color-graded ECharts heatmap.
+  const generateHeatmap = async () => {
+    setHeatmapLoading(true);
+    setHeatmapError(null);
+    setHeatmapData(null);
+
+    try {
+      const combos: { resolution: string; preset: string }[] = [];
+      RESOLUTIONS.forEach((resolution) =>
+        PRESETS.forEach((preset) => combos.push({ resolution, preset }))
+      );
+
+      const results = await Promise.all(
+        combos.map(({ resolution, preset }) =>
+          postPredict({ ...form, resolution, preset })
+        )
+      );
+
+      const data: number[][] = results.map((r, idx) => {
+        const resIdx    = RESOLUTIONS.indexOf(combos[idx].resolution);
+        const presetIdx = PRESETS.indexOf(combos[idx].preset);
+        return [resIdx, presetIdx, Math.round(r.predicted_fps)];
+      });
+
+      setHeatmapData(data);
+    } catch {
+      setHeatmapError("Heatmap generation failed — is FastAPI running on port 8000?");
+    } finally {
+      setHeatmapLoading(false);
+    }
+  };
+
+  const buildHeatmapOption = (data: number[][]) => ({
+    backgroundColor: "transparent",
+    tooltip: {
+      position: "top",
+      backgroundColor: "#22252e",
+      borderColor: "#2a2d35",
+      textStyle: { color: "#e0e0e0" },
+      formatter: (params: any) => {
+        const res    = RESOLUTIONS[params.data[0]];
+        const preset = PRESETS[params.data[1]];
+        return `${res} · ${preset.toUpperCase()}<br/>Predicted FPS: <b>${params.data[2]}</b>`;
+      },
+    },
+    grid: { top: 10, left: 90, right: 20, bottom: 60 },
+    xAxis: {
+      type: "category",
+      data: RESOLUTIONS,
+      axisLabel: { color: "#888", fontSize: 11 },
+      splitArea: { show: true },
+    },
+    yAxis: {
+      type: "category",
+      data: PRESETS.map((p) => p.toUpperCase()),
+      axisLabel: { color: "#888", fontSize: 11 },
+      splitArea: { show: true },
+    },
+    visualMap: {
+      min: 0,
+      max: 200,
+      calculable: true,
+      orient: "horizontal",
+      left: "center",
+      bottom: 0,
+      textStyle: { color: "#888", fontSize: 10 },
+      inRange: { color: ["#dc3545", "#ffc107", "#198754"] },
+    },
+    series: [
+      {
+        type: "heatmap",
+        data,
+        label: { show: true, color: "#fff", fontSize: 11, fontWeight: 700 },
+        emphasis: {
+          itemStyle: { shadowBlur: 10, shadowColor: "rgba(0,0,0,0.5)" },
+        },
+      },
+    ],
+  });
 
   // ── Bottleneck badge color ────────────────────────────────
   const bottleneckColor = (cls: string | null) => {
@@ -323,13 +412,68 @@ function Prediction() {
               )}
             </div>
           </form>
+
+          {/* ── Phase 2: Heatmap trigger card ─────────────── */}
+          <div
+            className="card p-3 mt-3"
+            style={{
+              backgroundColor: "#1a1d23",
+              border: "1px solid #2a2d35",
+              borderRadius: "10px",
+            }}
+          >
+            <div style={{
+              fontSize: "11px", color: "#555",
+              fontWeight: 700, letterSpacing: "1px",
+              textTransform: "uppercase", marginBottom: "8px",
+            }}>
+              FPS Heatmap
+            </div>
+            <div style={{ fontSize: "11px", color: "#666", marginBottom: "10px" }}>
+              Predicts FPS across all 16 resolution × preset combinations,
+              using the current genre, upscaling, ray tracing, and hardware
+              metrics above.
+            </div>
+            <button
+              type="button"
+              onClick={generateHeatmap}
+              disabled={heatmapLoading}
+              className="w-100"
+              style={{
+                backgroundColor: heatmapLoading ? "#2a2d35" : "#0dcaf0",
+                border: "none",
+                color: heatmapLoading ? "#888" : "#0a0a0a",
+                padding: "8px",
+                borderRadius: "8px",
+                fontWeight: 700,
+                fontSize: "13px",
+                cursor: heatmapLoading ? "not-allowed" : "pointer",
+              }}
+            >
+              {heatmapLoading ? "⏳ Generating heatmap (16 predictions)..." : "🗺️ Generate FPS Heatmap"}
+            </button>
+            {heatmapError && (
+              <div
+                className="mt-2 p-2"
+                style={{
+                  backgroundColor: "#2a1215",
+                  border: "1px solid #dc3545",
+                  borderRadius: "6px",
+                  color: "#dc3545",
+                  fontSize: "11px",
+                }}
+              >
+                ⚠️ {heatmapError}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ── Right — Results ───────────────────────────── */}
         <div className="col-12 col-lg-7">
 
           {/* Empty state */}
-          {!result && !loading && (
+          {!result && !loading && !heatmapData && (
             <div
               className="d-flex align-items-center justify-content-center"
               style={{
@@ -364,7 +508,7 @@ function Prediction() {
 
           {/* Results */}
           {result && (
-            <div>
+            <div className="mb-3">
 
               {/* ── Main metric cards ─────────────────────── */}
               <div className="row g-3 mb-3">
@@ -550,6 +694,46 @@ function Prediction() {
                 </div>
               </div>
 
+            </div>
+          )}
+
+          {/* ── Phase 2: FPS Heatmap ───────────────────────── */}
+          {heatmapLoading && (
+            <div
+              className="d-flex align-items-center justify-content-center"
+              style={{
+                height: "200px",
+                color: "#888",
+                flexDirection: "column",
+                gap: "12px",
+              }}
+            >
+              <div className="spinner-border text-secondary" role="status" />
+              <span>Running 16 predictions across the grid...</span>
+            </div>
+          )}
+
+          {heatmapData && !heatmapLoading && (
+            <div
+              className="card p-2"
+              style={{
+                backgroundColor: "#1a1d23",
+                border: "1px solid #2a2d35",
+                borderRadius: "10px",
+              }}
+            >
+              <div style={{
+                fontSize: "11px", color: "#555",
+                fontWeight: 700, letterSpacing: "1px",
+                textTransform: "uppercase", padding: "10px 10px 0",
+              }}>
+                Resolution × Preset FPS Heatmap
+              </div>
+              <ReactECharts
+                option={buildHeatmapOption(heatmapData)}
+                style={{ height: "320px", width: "100%" }}
+                opts={{ renderer: "canvas" }}
+              />
             </div>
           )}
         </div>
