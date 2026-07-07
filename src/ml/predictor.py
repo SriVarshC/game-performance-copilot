@@ -101,6 +101,32 @@ _GENRE_VRAM_THRESHOLD = {
 }
 _DEFAULT_VRAM_THRESHOLD = 3000
 
+# ─── Genre alias map ─────────────────────────────────────────────────────────
+# The trained model only recognizes 7 genre keys (see dataset_generator.py's
+# GAME_PROFILES): fps_competitive, fps_aaa, rpg_open_world, moba,
+# battle_royale, racing, strategy. The frontend's Prediction.tsx dropdown
+# uses a different set of labels (fps_shooter, open_world_rpg, rts,
+# indie_2d, etc). Without this map, any frontend value not already an
+# exact match gets encoded as "unseen" (-1) by the LabelEncoder — the
+# prediction still runs, just less accurately. This maps each frontend
+# label to its closest trained equivalent.
+_GENRE_ALIASES = {
+    "fps_shooter":    "fps_aaa",        # generic shooter -> closest AAA FPS profile
+    "open_world_rpg": "rpg_open_world", # same genre, word order differs
+    "rts":            "strategy",       # RTS is a strategy subgenre
+    "indie_2d":       "moba",           # closest profile: low GPU demand, high achievable FPS
+    # exact matches already work without aliasing, listed here for clarity:
+    "battle_royale":  "battle_royale",
+    "racing":         "racing",
+    "moba":           "moba",
+}
+
+
+def _resolve_genre(genre: str) -> str:
+    """Map a frontend genre label to its closest trained genre key."""
+    return _GENRE_ALIASES.get(genre, genre)
+
+
 _PRESET_ORDER = ["low", "medium", "high", "ultra", "epic"]
 
 
@@ -136,7 +162,7 @@ def _build_feature_vector(raw: dict) -> pd.DataFrame:
     vram_util  = float(raw.get("vram_usage", 50.0))   # percent, 0-100
     gpu_temp   = float(raw.get("gpu_temp",   75.0))
     resolution = str(raw.get("resolution",   "1920x1080"))
-    genre      = str(raw.get("game_genre",   "fps_aaa"))
+    genre      = _resolve_genre(str(raw.get("game_genre", "fps_aaa")))
     preset     = str(raw.get("preset",       "high")).lower()
     upscaling  = str(raw.get("upscaling",    "none"))
     ray_tracing = bool(raw.get("ray_tracing", False))
