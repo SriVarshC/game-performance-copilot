@@ -1,37 +1,48 @@
 name: CI — Run Tests
-
 # Trigger on every push and pull request to main
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
-
 jobs:
   test:
     name: pytest on Python 3.12
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: "123"
+          POSTGRES_DB: gamecopilot
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       # ── 1. Get the code ──────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
-
       # ── 2. Set up Python ─────────────────────────────────────
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: "pip"           # caches pip downloads between runs
-
       # ── 3. Install dependencies ───────────────────────────────
       - name: Install dependencies
         run: pip install -r requirements.txt
-
       # ── 4. Run tests ─────────────────────────────────────────
       - name: Run pytest
+        env:
+          DATABASE_URL: postgresql://postgres:123@localhost:5432/gamecopilot
         run: pytest tests/ -v --tb=short
-
       # ── 5. Upload test results (optional, visible in Actions) ─
       - name: Upload pytest results
         if: always()             # runs even if tests fail
