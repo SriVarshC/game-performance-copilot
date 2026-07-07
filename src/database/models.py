@@ -82,6 +82,7 @@ class Recommendation(Base):
 
     recommendation_id  = Column(Integer, primary_key=True, index=True)
     prediction_id      = Column(Integer, ForeignKey("predictions.prediction_id"), nullable=True)
+    user_id            = Column(Integer, ForeignKey("users.user_id"), nullable=True, index=True)
     message            = Column(String, nullable=True)
     severity           = Column(String, nullable=True)
     category           = Column(String, nullable=True)

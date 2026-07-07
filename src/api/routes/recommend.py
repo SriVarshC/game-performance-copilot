@@ -105,6 +105,7 @@ def get_recommendations(
                 severity           = rec.get("severity", "MEDIUM"),
                 category           = rec.get("category", "general"),
                 estimated_fps_gain = float(rec.get("estimated_fps_gain", 0)),
+                user_id            = current_user.user_id,
             )
             db.add(db_rec)
             db.flush()                          # assigns recommendation_id

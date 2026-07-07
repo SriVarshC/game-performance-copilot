@@ -36,6 +36,7 @@ def submit_feedback(
         rec = (
             db.query(RecommendationModel)
             .filter(RecommendationModel.recommendation_id == recommendation_id)
+            .filter(RecommendationModel.user_id == current_user.user_id)
             .first()
         )
 
@@ -71,25 +72,30 @@ def get_feedback_summary(
     current_user: User = Depends(get_current_user),
 ):
     try:
+        base_filter = RecommendationModel.user_id == current_user.user_id
+
         total = db.query(
             func.count(RecommendationModel.recommendation_id)
-        ).scalar() or 0
+        ).filter(base_filter).scalar() or 0
 
         feedback_given = db.query(
             func.count(RecommendationModel.recommendation_id)
         ).filter(
+            base_filter,
             RecommendationModel.was_helpful.isnot(None)
         ).scalar() or 0
 
         helpful = db.query(
             func.count(RecommendationModel.recommendation_id)
         ).filter(
+            base_filter,
             RecommendationModel.was_helpful == True
         ).scalar() or 0
 
         not_helpful = db.query(
             func.count(RecommendationModel.recommendation_id)
         ).filter(
+            base_filter,
             RecommendationModel.was_helpful == False
         ).scalar() or 0
 
@@ -107,7 +113,7 @@ def get_feedback_summary(
                     else_=0
                 )
             ).label("helpful_count"),
-        ).group_by(RecommendationModel.category).all()
+        ).filter(base_filter).group_by(RecommendationModel.category).all()
 
         by_category = [
             {
