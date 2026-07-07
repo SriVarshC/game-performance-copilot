@@ -13,3 +13,6 @@ build/
 
 # Docker secrets
 .env.docker
+
+# RAG knowledge index (regenerate via: python -m src.llm.knowledge_base)
+models/knowledge_index/
