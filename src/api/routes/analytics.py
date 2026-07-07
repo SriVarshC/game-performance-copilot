@@ -21,11 +21,12 @@ def get_analytics(
     avg_gpu      = 0.0
     avg_ram      = 0.0
     try:
-        tel_count = db.query(func.count(text("*"))).select_from(Telemetry).scalar() or 0
-        avg_fps   = float(db.query(func.avg(Telemetry.fps)).scalar()       or 0)
-        avg_cpu   = float(db.query(func.avg(Telemetry.cpu_usage)).scalar() or 0)
-        avg_gpu   = float(db.query(func.avg(Telemetry.gpu_usage)).scalar() or 0)
-        avg_ram   = float(db.query(func.avg(Telemetry.ram_usage)).scalar() or 0)
+        tel_filter = Telemetry.user_id == current_user.user_id
+        tel_count = db.query(func.count(text("*"))).select_from(Telemetry).filter(tel_filter).scalar() or 0
+        avg_fps   = float(db.query(func.avg(Telemetry.fps)).filter(tel_filter).scalar()       or 0)
+        avg_cpu   = float(db.query(func.avg(Telemetry.cpu_usage)).filter(tel_filter).scalar() or 0)
+        avg_gpu   = float(db.query(func.avg(Telemetry.gpu_usage)).filter(tel_filter).scalar() or 0)
+        avg_ram   = float(db.query(func.avg(Telemetry.ram_usage)).filter(tel_filter).scalar() or 0)
     except Exception as e:
         print(f"[analytics] telemetry query error: {e}")
 
@@ -34,12 +35,13 @@ def get_analytics(
     avg_pred_fps    = 0.0
     bottleneck_dist = {}
     try:
-        pred_count   = db.query(func.count(text("*"))).select_from(Prediction).scalar() or 0
-        avg_pred_fps = float(db.query(func.avg(Prediction.predicted_fps)).scalar() or 0)
+        pred_filter  = Prediction.user_id == current_user.user_id
+        pred_count   = db.query(func.count(text("*"))).select_from(Prediction).filter(pred_filter).scalar() or 0
+        avg_pred_fps = float(db.query(func.avg(Prediction.predicted_fps)).filter(pred_filter).scalar() or 0)
         rows = (
             db.query(Prediction.bottleneck_class,
                      func.count(text("*")).label("cnt"))
-            .filter(Prediction.bottleneck_class.isnot(None))
+            .filter(pred_filter, Prediction.bottleneck_class.isnot(None))
             .group_by(Prediction.bottleneck_class)
             .all()
         )
@@ -53,22 +55,23 @@ def get_analytics(
     not_helpful = 0
     helpful_pct = 0.0
     try:
+        rec_filter = Recommendation.user_id == current_user.user_id
         total_fb = (
             db.query(func.count(text("*")))
             .select_from(Recommendation)
-            .filter(Recommendation.was_helpful.isnot(None))
+            .filter(rec_filter, Recommendation.was_helpful.isnot(None))
             .scalar() or 0
         )
         helpful = (
             db.query(func.count(text("*")))
             .select_from(Recommendation)
-            .filter(Recommendation.was_helpful == True)
+            .filter(rec_filter, Recommendation.was_helpful == True)
             .scalar() or 0
         )
         not_helpful = (
             db.query(func.count(text("*")))
             .select_from(Recommendation)
-            .filter(Recommendation.was_helpful == False)
+            .filter(rec_filter, Recommendation.was_helpful == False)
             .scalar() or 0
         )
         helpful_pct = round((helpful / total_fb * 100), 1) if total_fb > 0 else 0.0
@@ -112,6 +115,7 @@ def get_predictions_history(
     try:
         rows = (
             db.query(Prediction)
+            .filter(Prediction.user_id == current_user.user_id)
             .order_by(Prediction.created_at.desc())
             .limit(limit)
             .all()
