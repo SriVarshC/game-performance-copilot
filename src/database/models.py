@@ -41,6 +41,7 @@ class Telemetry(Base):
 
     id            = Column(Integer, primary_key=True, index=True)
     system_id     = Column(Integer, ForeignKey("systems.system_id"), nullable=True)
+    user_id       = Column(Integer, ForeignKey("users.user_id"), nullable=True, index=True)
     timestamp     = Column(DateTime, default=datetime.datetime.utcnow)
     fps           = Column(Float, nullable=True)
     cpu_usage     = Column(Float, nullable=True)
@@ -59,6 +60,7 @@ class Prediction(Base):
 
     prediction_id    = Column(Integer, primary_key=True, index=True)
     system_id        = Column(Integer, ForeignKey("systems.system_id"), nullable=True)
+    user_id          = Column(Integer, ForeignKey("users.user_id"), nullable=True, index=True)
     game_genre       = Column(String, nullable=True)
     resolution       = Column(String, nullable=True)
     preset           = Column(String, nullable=True)

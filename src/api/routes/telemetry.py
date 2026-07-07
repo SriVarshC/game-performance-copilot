@@ -37,7 +37,7 @@ def get_diagnostics_engine():
 
 
 # ── Helper — save snapshot to PostgreSQL ─────────────────────
-def _save_telemetry(metrics: dict, db: Session) -> None:
+def _save_telemetry(metrics: dict, db: Session, user_id: int) -> None:
     """Silently saves a telemetry snapshot to PostgreSQL."""
     try:
         gpu = metrics.get("gpu", {})
@@ -52,6 +52,7 @@ def _save_telemetry(metrics: dict, db: Session) -> None:
             gpu_power_w=gpu.get("gpu_power_watts"),
             cpu_usage=cpu.get("cpu_utilization"),
             ram_usage=memory.get("ram_utilization"),
+            user_id=user_id,
         )
 
         db.add(row)
@@ -75,7 +76,7 @@ def get_telemetry(
         collector = get_collector()
         metrics = collector.collect_all()
 
-        _save_telemetry(metrics, db)
+        _save_telemetry(metrics, db, current_user.user_id)
 
         gpu = metrics.get("gpu", {})
         cpu = metrics.get("cpu", {})
@@ -113,7 +114,7 @@ def get_telemetry_with_diagnostics(
         engine = get_diagnostics_engine()
 
         metrics = collector.collect_all()
-        _save_telemetry(metrics, db)
+        _save_telemetry(metrics, db, current_user.user_id)
 
         issues = engine.analyze(metrics)
 
@@ -154,6 +155,7 @@ def get_telemetry_history(
         records = (
             db.query(TelemetryModel)
             .filter(TelemetryModel.timestamp >= since)
+            .filter(TelemetryModel.user_id == current_user.user_id)
             .order_by(TelemetryModel.timestamp.asc())
             .limit(limit)
             .all()

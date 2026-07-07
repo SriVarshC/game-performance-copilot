@@ -66,6 +66,7 @@ def predict_fps(
                 preset           = features["preset"],
                 ray_tracing      = features["ray_tracing"],
                 upscaling        = features["upscaling"],
+                user_id          = current_user.user_id,
             )
             db.add(db_pred)
             db.commit()
