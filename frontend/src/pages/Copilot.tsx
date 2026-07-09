@@ -6,8 +6,8 @@
 import { useState, useRef, useEffect } from "react";
 import { postLLMQuestion, getTelemetry, postCopilotFeedback } from "../services/api";
 import type { ChatMessage, TelemetryData } from "../types";
+import { IconCopilot, IconThumbsUp, IconThumbsDown, IconRadio } from "../icons";
 
-// ── Suggested starter questions ──────────────────────────────
 const SUGGESTIONS = [
   "Why is my FPS dropping below 30?",
   "Should I enable DLSS on RTX 3050 Ti?",
@@ -20,7 +20,7 @@ function Copilot() {
   const [messages,  setMessages]  = useState<ChatMessage[]>([
     {
       role:      "assistant",
-      content:   "Hi! I'm your Game Performance Copilot 🎮\n\nI can help you optimize your RTX 3050 Ti + i7-12650H setup. Ask me anything about FPS, settings, bottlenecks, or thermal issues.",
+      content:   "Hi! I'm your Game Performance Copilot.\n\nI can help you optimize your RTX 3050 Ti + i7-12650H setup. Ask me anything about FPS, settings, bottlenecks, or thermal issues.",
       timestamp: new Date().toISOString(),
     },
   ]);
@@ -30,13 +30,10 @@ function Copilot() {
   const [sendTelemetry, setSendTelemetry] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // ── Auto-scroll to bottom on new message ─────────────────
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // ── Fetch live telemetry (display only — backend fetches its own
-  //     live telemetry server-side for the actual LLM context) ─────
   useEffect(() => {
     const fetch = async () => {
       try {
@@ -51,66 +48,43 @@ function Copilot() {
     return () => clearInterval(interval);
   }, []);
 
-  // ── Send message ──────────────────────────────────────────
   const handleSend = async (question?: string) => {
     const text = (question ?? input).trim();
     if (!text || loading) return;
 
-    const userMsg: ChatMessage = {
-      role:      "user",
-      content:   text,
-      timestamp: new Date().toISOString(),
-    };
-
+    const userMsg: ChatMessage = { role: "user", content: text, timestamp: new Date().toISOString() };
     setMessages((m) => [...m, userMsg]);
     setInput("");
     setLoading(true);
 
     try {
-      const res = await postLLMQuestion({
-        question: text,
-        include_telemetry: sendTelemetry,
-      });
-
+      const res = await postLLMQuestion({ question: text, include_telemetry: sendTelemetry });
       const assistantMsg: ChatMessage = {
-        role:          "assistant",
-        content:       res.answer,
-        timestamp:     new Date().toISOString(),
-        interactionId: res.interaction_id,
+        role: "assistant", content: res.answer, timestamp: new Date().toISOString(), interactionId: res.interaction_id,
       };
       setMessages((m) => [...m, assistantMsg]);
     } catch {
-      setMessages((m) => [
-        ...m,
-        {
-          role:      "assistant",
-          content:   "⚠️ Could not reach the LLM. Make sure Ollama is running:\n\nollama serve\nollama run llama3.2",
-          timestamp: new Date().toISOString(),
-        },
-      ]);
+      setMessages((m) => [...m, {
+        role: "assistant",
+        content: "Could not reach the LLM. Make sure Ollama is running:\n\nollama serve\nollama run llama3.2",
+        timestamp: new Date().toISOString(),
+      }]);
     } finally {
       setLoading(false);
     }
   };
 
-  // ── Handle feedback click ─────────────────────────────────
   const handleFeedback = async (idx: number, wasHelpful: boolean) => {
     const msg = messages[idx];
     if (!msg.interactionId || msg.feedbackGiven) return;
-
     try {
       await postCopilotFeedback(msg.interactionId, wasHelpful);
-      setMessages((m) =>
-        m.map((item, i) =>
-          i === idx ? { ...item, feedbackGiven: true } : item
-        )
-      );
+      setMessages((m) => m.map((item, i) => (i === idx ? { ...item, feedbackGiven: true } : item)));
     } catch {
-      // silently fail — non-critical
+      // silently fail
     }
   };
 
-  // ── Handle Enter key ──────────────────────────────────────
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -118,70 +92,49 @@ function Copilot() {
     }
   };
 
-  // ── Format timestamp ──────────────────────────────────────
   const formatTime = (iso: string) => {
-    try { return new Date(iso).toLocaleTimeString(); }
-    catch { return ""; }
+    try { return new Date(iso).toLocaleTimeString(); } catch { return ""; }
   };
 
   return (
     <div style={{ height: "calc(100vh - 120px)", display: "flex", flexDirection: "column" }}>
 
-      {/* ── Page header ───────────────────────────────────── */}
       <div className="d-flex align-items-center justify-content-between mb-3">
-        <div>
-          <h4 style={{ color: "#fff", margin: 0, fontWeight: 700 }}>
-            🤖 AI Copilot
-          </h4>
-          <div style={{ fontSize: "12px", color: "#666", marginTop: "4px" }}>
-            Powered by Ollama · llama3.2 · Runs locally
+        <div className="d-flex align-items-center gap-2">
+          <IconCopilot size={22} color="var(--violet)" />
+          <div>
+            <h4 style={{ color: "#fff", fontFamily: "var(--font-display)", margin: 0, fontWeight: 700 }}>
+              AI Copilot
+            </h4>
+            <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>
+              Powered by Ollama · llama3.2 · Runs locally
+            </div>
           </div>
         </div>
 
-        {/* Telemetry toggle */}
         <div className="d-flex align-items-center gap-2">
-          <span style={{ fontSize: "11px", color: "#666" }}>
-            Attach live telemetry
-          </span>
+          <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>Attach live telemetry</span>
           <div
             onClick={() => setSendTelemetry((v) => !v)}
             style={{
-              width: "36px",
-              height: "20px",
-              borderRadius: "10px",
-              backgroundColor: sendTelemetry ? "#6f42c1" : "#2a2d35",
-              cursor: "pointer",
-              position: "relative",
-              transition: "background-color 0.2s",
+              width: "38px", height: "22px", borderRadius: "999px",
+              background: sendTelemetry ? "linear-gradient(135deg, var(--teal) 0%, var(--violet) 100%)" : "rgba(255,255,255,0.08)",
+              cursor: "pointer", position: "relative", transition: "background 0.2s",
             }}
           >
             <div style={{
-              position: "absolute",
-              top: "2px",
-              left: sendTelemetry ? "18px" : "2px",
-              width: "16px",
-              height: "16px",
-              borderRadius: "50%",
-              backgroundColor: "#fff",
-              transition: "left 0.2s",
+              position: "absolute", top: "3px", left: sendTelemetry ? "19px" : "3px",
+              width: "16px", height: "16px", borderRadius: "50%", backgroundColor: "#fff", transition: "left 0.2s",
             }} />
           </div>
           {telemetry && sendTelemetry && (
-            <span style={{
-              fontSize: "10px",
-              color: "#198754",
-              backgroundColor: "#19875422",
-              padding: "2px 8px",
-              borderRadius: "8px",
-              border: "1px solid #198754",
-            }}>
-              📡 Live
+            <span className="pill" style={{ background: "rgba(34,197,94,0.15)", color: "var(--success)" }}>
+              <IconRadio size={11} /> Live
             </span>
           )}
         </div>
       </div>
 
-      {/* ── Suggestions ───────────────────────────────────── */}
       <div className="d-flex gap-2 flex-wrap mb-3">
         {SUGGESTIONS.map((s) => (
           <button
@@ -189,15 +142,14 @@ function Copilot() {
             onClick={() => handleSend(s)}
             disabled={loading}
             style={{
-              backgroundColor: "#22252e",
-              border: "1px solid #2a2d35",
-              color: "#888",
-              borderRadius: "16px",
-              padding: "4px 12px",
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid var(--border)",
+              color: "var(--text-muted)",
+              borderRadius: "999px",
+              padding: "5px 14px",
               fontSize: "11px",
               cursor: loading ? "not-allowed" : "pointer",
               whiteSpace: "nowrap",
-              transition: "all 0.15s",
             }}
           >
             {s}
@@ -205,130 +157,79 @@ function Copilot() {
         ))}
       </div>
 
-      {/* ── Message list ──────────────────────────────────── */}
       <div
+        className="glass-card"
         style={{
-          flex: 1,
-          overflowY: "auto",
-          backgroundColor: "#1a1d23",
-          border: "1px solid #2a2d35",
-          borderRadius: "10px",
-          padding: "16px",
-          display: "flex",
-          flexDirection: "column",
-          gap: "16px",
-          marginBottom: "12px",
+          flex: 1, overflowY: "auto", padding: "18px",
+          display: "flex", flexDirection: "column", gap: "18px", marginBottom: "12px",
         }}
       >
         {messages.map((msg, idx) => (
-          <div
-            key={idx}
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: msg.role === "user" ? "flex-end" : "flex-start",
-              gap: "4px",
-            }}
-          >
-            {/* Role label */}
-            <div style={{
-              fontSize: "10px",
-              color: "#555",
-              fontWeight: 700,
-              letterSpacing: "0.5px",
-              textTransform: "uppercase",
-              paddingLeft: msg.role !== "user" ? "4px" : "0",
-              paddingRight: msg.role === "user" ? "4px" : "0",
-            }}>
-              {msg.role === "user" ? "You" : "🤖 Copilot"} · {formatTime(msg.timestamp)}
+          <div key={idx} style={{ display: "flex", flexDirection: "column", alignItems: msg.role === "user" ? "flex-end" : "flex-start", gap: "6px" }}>
+            <div className="hud-label" style={{ paddingLeft: msg.role !== "user" ? "4px" : "0", paddingRight: msg.role === "user" ? "4px" : "0" }}>
+              {msg.role === "user" ? "You" : "Copilot"} · {formatTime(msg.timestamp)}
             </div>
 
-            {/* Bubble */}
             <div style={{
               maxWidth: "80%",
-              backgroundColor: msg.role === "user" ? "#6f42c1" : "#22252e",
-              border: `1px solid ${msg.role === "user" ? "#6f42c1" : "#2a2d35"}`,
-              borderRadius: msg.role === "user"
-                ? "16px 16px 4px 16px"
-                : "16px 16px 16px 4px",
-              padding: "10px 14px",
+              background: msg.role === "user"
+                ? "linear-gradient(135deg, var(--teal) 0%, var(--violet) 100%)"
+                : "rgba(255,255,255,0.04)",
+              border: msg.role === "user" ? "none" : "1px solid var(--border)",
+              borderRadius: msg.role === "user" ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
+              padding: "12px 16px",
               fontSize: "13px",
               lineHeight: 1.6,
-              color: "#e0e0e0",
+              color: msg.role === "user" ? "#fff" : "var(--text)",
               whiteSpace: "pre-wrap",
               wordBreak: "break-word",
             }}>
               {msg.content}
             </div>
 
-            {/* Feedback buttons — only on assistant messages that have an interactionId */}
             {msg.role === "assistant" && msg.interactionId && (
-              <div style={{ display: "flex", gap: "6px", paddingLeft: "4px" }}>
+              <div className="d-flex align-items-center gap-2" style={{ paddingLeft: "4px" }}>
                 <button
                   onClick={() => handleFeedback(idx, true)}
                   disabled={msg.feedbackGiven}
                   title="Helpful"
                   style={{
-                    background: "none",
-                    border: "1px solid #2a2d35",
-                    borderRadius: "6px",
-                    padding: "2px 8px",
-                    fontSize: "12px",
-                    cursor: msg.feedbackGiven ? "default" : "pointer",
-                    opacity: msg.feedbackGiven ? 0.4 : 1,
-                    color: "#888",
+                    background: "rgba(255,255,255,0.04)", border: "1px solid var(--border)", borderRadius: "999px",
+                    padding: "4px 10px", cursor: msg.feedbackGiven ? "default" : "pointer",
+                    opacity: msg.feedbackGiven ? 0.4 : 1, color: "var(--success)", display: "flex", alignItems: "center",
                   }}
                 >
-                  👍
+                  <IconThumbsUp size={13} />
                 </button>
                 <button
                   onClick={() => handleFeedback(idx, false)}
                   disabled={msg.feedbackGiven}
                   title="Not helpful"
                   style={{
-                    background: "none",
-                    border: "1px solid #2a2d35",
-                    borderRadius: "6px",
-                    padding: "2px 8px",
-                    fontSize: "12px",
-                    cursor: msg.feedbackGiven ? "default" : "pointer",
-                    opacity: msg.feedbackGiven ? 0.4 : 1,
-                    color: "#888",
+                    background: "rgba(255,255,255,0.04)", border: "1px solid var(--border)", borderRadius: "999px",
+                    padding: "4px 10px", cursor: msg.feedbackGiven ? "default" : "pointer",
+                    opacity: msg.feedbackGiven ? 0.4 : 1, color: "var(--danger)", display: "flex", alignItems: "center",
                   }}
                 >
-                  👎
+                  <IconThumbsDown size={13} />
                 </button>
                 {msg.feedbackGiven && (
-                  <span style={{ fontSize: "10px", color: "#555", alignSelf: "center" }}>
-                    Thanks for the feedback!
-                  </span>
+                  <span style={{ fontSize: "10px", color: "var(--text-dim)" }}>Thanks for the feedback!</span>
                 )}
               </div>
             )}
           </div>
         ))}
 
-        {/* Loading bubble */}
         {loading && (
-          <div style={{ display: "flex", flexDirection: "column",
-            alignItems: "flex-start", gap: "4px" }}>
-            <div style={{ fontSize: "10px", color: "#555",
-              fontWeight: 700, textTransform: "uppercase",
-              paddingLeft: "4px" }}>
-              🤖 Copilot · thinking...
-            </div>
-            <div style={{
-              backgroundColor: "#22252e",
-              border: "1px solid #2a2d35",
-              borderRadius: "16px 16px 16px 4px",
-              padding: "12px 16px",
-            }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "6px" }}>
+            <div className="hud-label" style={{ paddingLeft: "4px" }}>Copilot · thinking...</div>
+            <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid var(--border)", borderRadius: "18px 18px 18px 4px", padding: "14px 18px" }}>
               <div className="d-flex gap-1 align-items-center">
                 {[0, 1, 2].map((i) => (
                   <div key={i} style={{
-                    width: "6px", height: "6px",
-                    borderRadius: "50%",
-                    backgroundColor: "#6f42c1",
+                    width: "6px", height: "6px", borderRadius: "50%",
+                    background: "var(--violet)",
                     animation: `bounce 1.2s ease-in-out ${i * 0.2}s infinite`,
                   }} />
                 ))}
@@ -336,11 +237,9 @@ function Copilot() {
             </div>
           </div>
         )}
-
         <div ref={bottomRef} />
       </div>
 
-      {/* ── Input row ─────────────────────────────────────── */}
       <div className="d-flex gap-2">
         <textarea
           value={input}
@@ -349,40 +248,26 @@ function Copilot() {
           placeholder="Ask about FPS, settings, bottlenecks... (Enter to send)"
           rows={2}
           style={{
-            flex: 1,
-            backgroundColor: "#22252e",
-            border: "1px solid #2a2d35",
-            color: "#e0e0e0",
-            borderRadius: "8px",
-            padding: "10px 14px",
-            fontSize: "13px",
-            resize: "none",
-            outline: "none",
+            flex: 1, background: "rgba(255,255,255,0.04)", border: "1px solid var(--border)",
+            color: "var(--text)", borderRadius: "14px", padding: "12px 16px", fontSize: "13px",
+            resize: "none", outline: "none",
           }}
         />
         <button
           onClick={() => handleSend()}
           disabled={loading || !input.trim()}
           style={{
-            backgroundColor:
-              loading || !input.trim() ? "#22252e" : "#6f42c1",
-            border: "1px solid",
-            borderColor:
-              loading || !input.trim() ? "#2a2d35" : "#6f42c1",
-            color: loading || !input.trim() ? "#555" : "#fff",
-            borderRadius: "8px",
-            padding: "0 20px",
-            fontWeight: 700,
-            fontSize: "18px",
+            background: loading || !input.trim() ? "rgba(255,255,255,0.06)" : "linear-gradient(135deg, var(--teal) 0%, var(--violet) 100%)",
+            border: "none",
+            color: loading || !input.trim() ? "var(--text-dim)" : "#fff",
+            borderRadius: "14px", padding: "0 24px", fontWeight: 700, fontSize: "16px",
             cursor: loading || !input.trim() ? "not-allowed" : "pointer",
-            transition: "all 0.15s",
           }}
         >
-          ➤
+          →
         </button>
       </div>
 
-      {/* Bounce animation */}
       <style>{`
         @keyframes bounce {
           0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }

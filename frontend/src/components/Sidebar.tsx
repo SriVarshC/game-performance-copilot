@@ -3,50 +3,40 @@
 // ═══════════════════════════════════════════════════════════
 
 import { NavLink } from "react-router-dom";
+import { IconDashboard, IconAnalytics, IconTarget, IconCopilot, IconBolt } from "../icons";
 
 interface NavItem {
   path:  string;
-  icon:  string;
+  icon:  React.ReactNode;
   label: string;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { path: "/",            icon: "📊", label: "Dashboard"    },
-  { path: "/analytics",   icon: "🔍", label: "Analytics"    },
-  { path: "/prediction",  icon: "🎯", label: "Prediction"   },
-  { path: "/copilot",     icon: "🤖", label: "Copilot"      },
-  { path: "/performance", icon: "⚡", label: "Performance"  },
+  { path: "/",            icon: <IconDashboard size={18} />, label: "Dashboard"   },
+  { path: "/analytics",   icon: <IconAnalytics size={18} />, label: "Analytics"   },
+  { path: "/prediction",  icon: <IconTarget size={18} />,    label: "Prediction"  },
+  { path: "/copilot",     icon: <IconCopilot size={18} />,   label: "Copilot"     },
+  { path: "/performance", icon: <IconBolt size={18} />,      label: "Performance" },
 ];
 
 function Sidebar() {
   return (
     <aside
       style={{
-        width: "200px",
-        minWidth: "200px",
-        backgroundColor: "#1a1d23",
-        borderRight: "1px solid #2a2d35",
-        paddingTop: "16px",
+        width: "220px",
+        minWidth: "220px",
+        background: "rgba(11, 14, 26, 0.4)",
+        borderRight: "1px solid var(--border)",
+        paddingTop: "20px",
         display: "flex",
         flexDirection: "column",
-        gap: "4px",
+        gap: "6px",
       }}
     >
-      {/* Section label */}
-      <div
-        style={{
-          fontSize: "10px",
-          color: "#555",
-          fontWeight: 700,
-          letterSpacing: "1.5px",
-          textTransform: "uppercase",
-          padding: "0 16px 8px",
-        }}
-      >
+      <div className="hud-label" style={{ padding: "0 18px 10px" }}>
         Navigation
       </div>
 
-      {/* Nav links */}
       {NAV_ITEMS.map((item) => (
         <NavLink
           key={item.path}
@@ -56,37 +46,37 @@ function Sidebar() {
             display: "flex",
             alignItems: "center",
             gap: "10px",
-            padding: "10px 16px",
+            margin: "0 12px",
+            padding: "10px 14px",
             textDecoration: "none",
             fontSize: "14px",
-            fontWeight: isActive ? 600 : 400,
-            color: isActive ? "#ffffff" : "#888",
-            backgroundColor: isActive ? "#22252e" : "transparent",
-            borderLeft: isActive
-              ? "3px solid #6f42c1"
-              : "3px solid transparent",
-            borderRadius: "0 6px 6px 0",
+            fontWeight: isActive ? 600 : 500,
+            color: isActive ? "#fff" : "var(--text-muted)",
+            background: isActive
+              ? "linear-gradient(135deg, var(--violet) 0%, var(--violet-2) 100%)"
+              : "transparent",
+            boxShadow: isActive ? "0 4px 16px rgba(139, 92, 246, 0.35)" : "none",
+            borderRadius: "12px",
             transition: "all 0.15s ease",
           })}
         >
-          <span style={{ fontSize: "18px" }}>{item.icon}</span>
+          {item.icon}
           <span>{item.label}</span>
         </NavLink>
       ))}
 
-      {/* Bottom — version */}
       <div
         style={{
           marginTop: "auto",
-          padding: "16px",
+          padding: "16px 18px",
           fontSize: "11px",
-          color: "#444",
-          borderTop: "1px solid #2a2d35",
+          color: "var(--text-dim)",
+          borderTop: "1px solid var(--border)",
         }}
       >
         <div>v3.0.0 · Phase 11</div>
-        <div style={{ marginTop: "4px" }}>Sri Varsh C</div>
-        <div>UMass Amherst DACSS</div>
+        <div style={{ marginTop: "4px" }}>Srivarsh Cirigiri</div>
+        <div>UMass Amherst</div>
       </div>
     </aside>
   );

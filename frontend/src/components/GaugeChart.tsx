@@ -1,6 +1,5 @@
 // ═══════════════════════════════════════════════════════════
-// GaugeChart — ECharts gauge for CPU%, GPU%, RAM%, VRAM%, and
-// GPU Temperature (via mode="temperature")
+// GaugeChart — ECharts gauge, restyled for the glass/vivid theme
 // ═══════════════════════════════════════════════════════════
 
 import ReactECharts from "echarts-for-react";
@@ -10,14 +9,7 @@ interface GaugeChartProps {
   value:  number | null;
   color?: string;
   max?:   number;
-  /**
-   * "percent"     — default. Thresholds at 50/75/90 (of `max`).
-   *                 Used for CPU/GPU/RAM/VRAM usage gauges.
-   * "temperature" — Thresholds at 70/80/85°C, matching the
-   *                 thermal-throttle logic in dataset_generator.py
-   *                 (throttling begins at 85°C).
-   */
-  mode?: "percent" | "temperature";
+  mode?:  "percent" | "temperature";
 }
 
 function GaugeChart({
@@ -28,23 +20,19 @@ function GaugeChart({
   mode  = "percent",
 }: GaugeChartProps) {
   const safeValue = value ?? 0;
-
-  // ── Healthy/idle band is now genuinely green, not brand purple —
-  // gauges read green → yellow → orange → red at a glance. ──────────
-  const HEALTHY_GREEN = "#28a745";
+  const HEALTHY = color ?? "#2DD4BF";
 
   const getColor = (val: number): string => {
     if (mode === "temperature") {
-      if (val >= 85) return "#dc3545";   // red — thermal throttling zone
-      if (val >= 80) return "#fd7e14";   // orange — approaching throttle
-      if (val >= 70) return "#ffc107";   // yellow — warm
-      return color ?? HEALTHY_GREEN;      // green — safe operating temp
+      if (val >= 85) return "#EF4444";
+      if (val >= 80) return "#F97316";
+      if (val >= 70) return "#F59E0B";
+      return HEALTHY;
     }
-    // percent mode (CPU/GPU/RAM/VRAM usage)
-    if (val >= 90) return "#dc3545";     // red — critical
-    if (val >= 75) return "#fd7e14";     // orange — high
-    if (val >= 50) return "#ffc107";     // yellow — medium
-    return color ?? HEALTHY_GREEN;        // green — healthy/idle
+    if (val >= 90) return "#EF4444";
+    if (val >= 75) return "#F97316";
+    if (val >= 50) return "#F59E0B";
+    return HEALTHY;
   };
 
   const activeColor = getColor(safeValue);
@@ -62,88 +50,41 @@ function GaugeChart({
         splitNumber: 5,
         radius: "85%",
         center: ["50%", "60%"],
-
-        // Outer arc (filled)
         progress: {
           show: true,
           width: 12,
-          itemStyle: {
-            color: activeColor,
-            shadowBlur: 8,
-            shadowColor: activeColor,
-          },
+          itemStyle: { color: activeColor, shadowBlur: 10, shadowColor: activeColor },
         },
-
-        // Track (empty arc)
-        axisLine: {
-          lineStyle: {
-            width: 12,
-            color: [[1, "#2a2d35"]],
-          },
-        },
-
-        // Tick marks
-        axisTick: {
-          show: false,
-        },
-        splitLine: {
-          show: false,
-        },
-        axisLabel: {
-          show: false,
-        },
-
-        // Needle pointer
-        pointer: {
-          show: true,
-          length: "55%",
-          width: 4,
-          itemStyle: {
-            color: activeColor,
-          },
-        },
-
-        // Center value display
+        axisLine: { lineStyle: { width: 12, color: [[1, "rgba(255,255,255,0.08)"]] } },
+        axisTick: { show: false },
+        splitLine: { show: false },
+        axisLabel: { show: false },
+        pointer: { show: true, length: "55%", width: 4, itemStyle: { color: activeColor } },
         detail: {
           valueAnimation: true,
-          formatter: (val: number) =>
-            val === 0 && value === null ? "N/A" : `${val}${unitSuffix}`,
-          color: "#ffffff",
+          formatter: (val: number) => (val === 0 && value === null ? "N/A" : `${val}${unitSuffix}`),
+          color: "#F1F5F9",
           fontSize: 18,
           fontWeight: 700,
+          fontFamily: "Space Grotesk",
           offsetCenter: [0, "25%"],
         },
-
-        // Title below gauge
         title: {
           show: true,
           offsetCenter: [0, "55%"],
-          color: "#888",
+          color: "#8A93A6",
           fontSize: 11,
           fontWeight: 600,
           text: title.toUpperCase(),
         },
-
         data: [{ value: safeValue, name: title }],
       },
     ],
   };
 
   return (
-    <div
-      className="card"
-      style={{
-        backgroundColor: "#1a1d23",
-        border: "1px solid #2a2d35",
-        borderRadius: "10px",
-        padding: "8px",
-      }}
-    >
-      <ReactECharts
-        option={option}
-        style={{ height: "180px", width: "100%" }}
-        opts={{ renderer: "canvas" }}
-      />
+    <div className="glass-card" style={{ padding: "8px" }}>
+      <ReactECharts option={option} style={{ height: "180px", width: "100%" }} opts={{ renderer: "canvas" }} />
     </div>
   );
 }

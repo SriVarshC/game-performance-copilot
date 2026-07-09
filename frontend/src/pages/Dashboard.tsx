@@ -4,6 +4,7 @@ import GaugeChart from "../components/GaugeChart";
 import LineChart from "../components/LineChart";
 import { getTelemetry, getTelemetryHistory } from "../services/api";
 import type { TelemetryData, TelemetryHistory } from "../types";
+import { IconGamepad, IconCpu, IconGpu, IconRam, IconBolt, IconThermometer, IconAlert } from "../icons";
 
 const Dashboard: React.FC = () => {
   const [telemetry, setTelemetry] = useState<TelemetryData | null>(null);
@@ -11,11 +12,10 @@ const Dashboard: React.FC = () => {
   const [error, setError]         = useState<string | null>(null);
   const [isLive, setIsLive]       = useState(false);
 
-  // ── Guard: only one telemetry request in-flight at a time ─────────────────
   const isFetchingRef = useRef(false);
 
   const fetchTelemetry = async () => {
-    if (isFetchingRef.current) return;          // skip if previous still pending
+    if (isFetchingRef.current) return;
     isFetchingRef.current = true;
     try {
       const data = await getTelemetry();
@@ -35,7 +35,7 @@ const Dashboard: React.FC = () => {
       const data = await getTelemetryHistory(1, 60);
       setHistory(data);
     } catch {
-      // non-critical — charts just stay empty
+      // non-critical
     }
   };
 
@@ -47,78 +47,80 @@ const Dashboard: React.FC = () => {
     return () => { clearInterval(t1); clearInterval(t2); };
   }, []);
 
-  // ── FPS colour helper ─────────────────────────────────────────────────────
   const fpsColor = (v: number | null) =>
-    v === null ? "#888" : v >= 60 ? "#44bb44" : v >= 30 ? "#ffcc00" : "#ff4444";
+    v === null ? "var(--text-muted)" : v >= 60 ? "var(--data-fps)" : v >= 30 ? "var(--data-vram)" : "var(--danger)";
 
   return (
     <div className="p-4">
 
       {/* Header */}
       <div className="d-flex align-items-center gap-3 mb-4">
-        <h2 className="text-white mb-0">Live Dashboard</h2>
+        <h2 style={{ color: "#fff", fontFamily: "var(--font-display)", fontWeight: 700, margin: 0 }}>
+          Live Dashboard
+        </h2>
         <span
-          className={`badge rounded-pill ${isLive ? "bg-success" : "bg-secondary"}`}
-          style={{ fontSize: "0.75rem" }}
+          className="pill"
+          style={{
+            background: isLive ? "rgba(34,197,94,0.15)" : "rgba(148,163,184,0.15)",
+            color: isLive ? "var(--success)" : "var(--text-muted)",
+          }}
         >
-          {isLive ? "● LIVE" : "○ OFFLINE"}
+          <span
+            className={isLive ? "hud-live-dot" : ""}
+            style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor" }}
+          />
+          {isLive ? "LIVE" : "OFFLINE"}
         </span>
       </div>
 
       {/* Error banner */}
       {error && (
-        <div className="alert alert-danger mb-4">
-          <strong>⚠️ Connection Error:</strong> {error}
+        <div
+          className="glass-card d-flex align-items-center gap-2 mb-4 p-3"
+          style={{ borderColor: "rgba(239,68,68,0.4)", color: "var(--danger)", fontSize: "13px" }}
+        >
+          <IconAlert size={16} /> <strong>Connection Error:</strong> {error}
         </div>
       )}
 
-      {/* ── Metric cards ─────────────────────────────────────────────────── */}
+      {/* ── Metric cards ─────────────────────────────────── */}
       <div className="row g-3 mb-4">
         {[
-          { label: "FPS",      value: telemetry?.fps,        unit: "fps", icon: "🎮", color: fpsColor(telemetry?.fps ?? null) },
-          { label: "CPU Usage",value: telemetry?.cpu_usage,  unit: "%",   icon: "🖥️", color: "#4fc3f7" },
-          { label: "GPU Usage",value: telemetry?.gpu_usage,  unit: "%",   icon: "🎴", color: "#ab47bc" },
-          { label: "RAM Usage",value: telemetry?.ram_usage,  unit: "%",   icon: "💾", color: "#66bb6a" },
-          { label: "VRAM",     value: telemetry?.vram_usage, unit: "%",   icon: "⚡", color: "#ffa726" },
-          { label: "GPU Temp", value: telemetry?.gpu_temp,   unit: "°C",  icon: "🌡️", color: "#ef5350" },
+          { label: "FPS",       value: telemetry?.fps,        unit: "fps", icon: <IconGamepad size={18} />,      color: fpsColor(telemetry?.fps ?? null) },
+          { label: "CPU Usage", value: telemetry?.cpu_usage,  unit: "%",   icon: <IconCpu size={18} />,          color: "var(--data-cpu)" },
+          { label: "GPU Usage", value: telemetry?.gpu_usage,  unit: "%",   icon: <IconGpu size={18} />,          color: "var(--data-gpu)" },
+          { label: "RAM Usage", value: telemetry?.ram_usage,  unit: "%",   icon: <IconRam size={18} />,          color: "var(--data-ram)" },
+          { label: "VRAM",      value: telemetry?.vram_usage, unit: "%",   icon: <IconBolt size={18} />,         color: "var(--data-vram)" },
+          { label: "GPU Temp",  value: telemetry?.gpu_temp,   unit: "°C",  icon: <IconThermometer size={18} />,  color: "var(--data-temp)" },
         ].map(({ label, value, unit, icon, color }) => (
           <div key={label} className="col-6 col-md-4 col-xl-2">
-            <MetricCard
-              label={label}
-              value={value ?? null}
-              unit={unit}
-              icon={icon}
-              color={color}
-            />
+            <MetricCard label={label} value={value ?? null} unit={unit} icon={icon} color={color} live={isLive} />
           </div>
         ))}
       </div>
 
-      {/* ── Gauge row ────────────────────────────────────────────────────── */}
-      {/* Now 5 gauges: CPU/GPU/RAM/VRAM use percent thresholds (green <50,
-          yellow 50-75, orange 75-90, red 90+); GPU Temp uses temperature
-          thresholds tied to the actual thermal-throttle point (85°C). */}
+      {/* ── Gauge row ────────────────────────────────────── */}
       <div className="row g-3 mb-4">
         {[
-          { title: "CPU",  value: telemetry?.cpu_usage  ?? 0, mode: "percent" as const,     max: 100 },
-          { title: "GPU",  value: telemetry?.gpu_usage  ?? 0, mode: "percent" as const,     max: 100 },
-          { title: "RAM",  value: telemetry?.ram_usage  ?? 0, mode: "percent" as const,     max: 100 },
-          { title: "VRAM", value: telemetry?.vram_usage ?? 0, mode: "percent" as const,     max: 100 },
-          { title: "GPU Temp", value: telemetry?.gpu_temp ?? 0, mode: "temperature" as const, max: 100 },
-        ].map(({ title, value, mode, max }) => (
+          { title: "CPU",  value: telemetry?.cpu_usage  ?? 0, mode: "percent" as const,     color: "#3B82F6" },
+          { title: "GPU",  value: telemetry?.gpu_usage  ?? 0, mode: "percent" as const,     color: "#8B5CF6" },
+          { title: "RAM",  value: telemetry?.ram_usage  ?? 0, mode: "percent" as const,     color: "#22C55E" },
+          { title: "VRAM", value: telemetry?.vram_usage ?? 0, mode: "percent" as const,     color: "#F59E0B" },
+          { title: "GPU Temp", value: telemetry?.gpu_temp ?? 0, mode: "temperature" as const, color: "#2DD4BF" },
+        ].map(({ title, value, mode, color }) => (
           <div key={title} className="col-6 col-md-4 col-xl">
-            <GaugeChart title={title} value={value} max={max} mode={mode} />
+            <GaugeChart title={title} value={value} max={100} mode={mode} color={color} />
           </div>
         ))}
       </div>
 
-      {/* ── Line charts ──────────────────────────────────────────────────── */}
+      {/* ── Line charts ──────────────────────────────────── */}
       <div className="row g-3">
         <div className="col-12 col-lg-6">
           <LineChart
             title="FPS History"
             timestamps={history?.timestamps ?? []}
-            series={[{ name: "FPS", data: history?.fps ?? [], color: "#66bb6a" }]}
+            series={[{ name: "FPS", data: history?.fps ?? [], color: "#2DD4BF" }]}
             height={300}
             yUnit="fps"
           />
@@ -128,9 +130,9 @@ const Dashboard: React.FC = () => {
             title="System Usage"
             timestamps={history?.timestamps ?? []}
             series={[
-              { name: "CPU", data: history?.cpu_usage ?? [], color: "#4fc3f7" },
-              { name: "GPU", data: history?.gpu_usage ?? [], color: "#ab47bc" },
-              { name: "RAM", data: history?.ram_usage ?? [], color: "#66bb6a" },
+              { name: "CPU", data: history?.cpu_usage ?? [], color: "#3B82F6" },
+              { name: "GPU", data: history?.gpu_usage ?? [], color: "#8B5CF6" },
+              { name: "RAM", data: history?.ram_usage ?? [], color: "#22C55E" },
             ]}
             height={300}
             yUnit="%"

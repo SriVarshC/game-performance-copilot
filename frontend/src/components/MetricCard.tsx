@@ -1,67 +1,85 @@
 // ═══════════════════════════════════════════════════════════
-// MetricCard — Reusable stat card for live metrics
-// Used by Dashboard for FPS, CPU%, GPU%, RAM%, VRAM%
+// MetricCard — glass stat card with colored icon chip
+// Supports a "filled" hero variant for emphasis
 // ═══════════════════════════════════════════════════════════
+
+import type { ReactNode } from "react";
 
 interface MetricCardProps {
   label:     string;
   value:     number | string | null;
   unit?:     string;
-  icon?:     string;
-  color?:    string;    // accent color for value text
-  subtitle?: string;   // optional line below value
+  icon?:     ReactNode;
+  color?:    string;
+  subtitle?: string;
+  live?:     boolean;
+  filled?:   boolean;   // NEW — renders as a solid gradient hero card
 }
 
 function MetricCard({
   label,
   value,
   unit      = "",
-  icon      = "📊",
-  color     = "#ffffff",
+  icon,
+  color     = "var(--teal)",
   subtitle,
+  live      = false,
+  filled    = false,
 }: MetricCardProps) {
-  const displayValue = value === null || value === undefined ? "N/A" : value;
+  const displayValue = value === null || value === undefined ? "—" : value;
+
+  const cardStyle = filled
+    ? {
+        padding: "18px",
+        background: `linear-gradient(135deg, ${color} 0%, color-mix(in srgb, ${color} 60%, #6D28D9) 100%)`,
+        border: "none",
+      }
+    : { padding: "18px" };
+
+  const textColor = filled ? "#fff" : color;
+  const labelColor = filled ? "rgba(255,255,255,0.85)" : "var(--text-muted)";
 
   return (
-    <div
-      className="card h-100"
-      style={{
-        backgroundColor: "#1a1d23",
-        border: "1px solid #2a2d35",
-        borderRadius: "10px",
-        padding: "16px 20px",
-        minWidth: "140px",
-      }}
-    >
-      {/* Header row — icon + label */}
-      <div
-        className="d-flex align-items-center gap-2 mb-2"
-        style={{ color: "#888", fontSize: "12px", fontWeight: 600 }}
-      >
-        <span style={{ fontSize: "16px" }}>{icon}</span>
-        <span style={{ textTransform: "uppercase", letterSpacing: "0.8px" }}>
-          {label}
-        </span>
+    <div className={filled ? "h-100" : "glass-card h-100"} style={{ ...cardStyle, borderRadius: "var(--radius)" }}>
+      <div className="d-flex align-items-center justify-content-between mb-3">
+        <div className="d-flex align-items-center gap-2">
+          {icon && (
+            <div
+              className="icon-chip"
+              style={{
+                background: filled ? "rgba(255,255,255,0.2)" : `${color}22`,
+                color: filled ? "#fff" : color,
+              }}
+            >
+              {icon}
+            </div>
+          )}
+          <span className="hud-label" style={{ color: labelColor }}>{label}</span>
+        </div>
+        {live && (
+          <span
+            className="hud-live-dot"
+            style={{
+              width: "6px",
+              height: "6px",
+              borderRadius: "50%",
+              backgroundColor: filled ? "#fff" : "var(--success)",
+              boxShadow: filled ? "0 0 8px #fff" : "0 0 8px var(--success)",
+            }}
+          />
+        )}
       </div>
 
-      {/* Main value */}
-      <div
-        style={{
-          fontSize: "32px",
-          fontWeight: 700,
-          color: color,
-          lineHeight: 1.1,
-          letterSpacing: "-0.5px",
-        }}
-      >
+      <div className="stat-value" style={{ fontSize: "28px", color: textColor, lineHeight: 1.1 }}>
         {displayValue}
         {value !== null && value !== undefined && unit && (
           <span
             style={{
-              fontSize: "14px",
-              fontWeight: 400,
-              color: "#888",
+              fontSize: "13px",
+              fontWeight: 500,
+              color: filled ? "rgba(255,255,255,0.75)" : "var(--text-muted)",
               marginLeft: "4px",
+              fontFamily: "var(--font-sans)",
             }}
           >
             {unit}
@@ -69,15 +87,8 @@ function MetricCard({
         )}
       </div>
 
-      {/* Subtitle */}
       {subtitle && (
-        <div
-          style={{
-            fontSize: "11px",
-            color: "#666",
-            marginTop: "6px",
-          }}
-        >
+        <div style={{ fontSize: "11px", color: filled ? "rgba(255,255,255,0.7)" : "var(--text-dim)", marginTop: "8px" }}>
           {subtitle}
         </div>
       )}

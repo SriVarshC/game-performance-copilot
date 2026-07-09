@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 import { getHealth } from "../services/api";
 import { useAuth } from "../contexts/AuthContext";
+import { IconGamepad, IconUser } from "../icons";
 
 function Navbar() {
   const [apiStatus, setApiStatus] = useState<"online" | "offline" | "checking">("checking");
@@ -12,7 +13,6 @@ function Navbar() {
   const { username, isAuthenticated, logout } = useAuth();
 
   useEffect(() => {
-
     const check = async () => {
       try {
         const data = await getHealth();
@@ -26,17 +26,15 @@ function Navbar() {
         setApiStatus("offline");
       }
     };
-
     check();
-    // Re-check every 30 seconds
     const interval = setInterval(check, 30000);
     return () => clearInterval(interval);
   }, []);
 
   const statusColor = {
-    online:   "#198754",
-    offline:  "#dc3545",
-    checking: "#ffc107",
+    online:   "var(--success)",
+    offline:  "var(--danger)",
+    checking: "var(--warn)",
   }[apiStatus];
 
   const statusLabel = {
@@ -47,91 +45,100 @@ function Navbar() {
 
   return (
     <nav
-      className="d-flex align-items-center justify-content-between px-4 py-2"
+      className="d-flex align-items-center justify-content-between px-4"
       style={{
-        backgroundColor: "#1a1d23",
-        borderBottom: "1px solid #2a2d35",
-        height: "56px",
+        background: "rgba(11, 14, 26, 0.55)",
+        backdropFilter: "blur(20px)",
+        WebkitBackdropFilter: "blur(20px)",
+        borderBottom: "1px solid var(--border)",
+        height: "64px",
         position: "sticky",
         top: 0,
         zIndex: 100,
       }}
     >
       {/* Left — Logo + Title */}
-      <div className="d-flex align-items-center gap-2">
-        <span style={{ fontSize: "22px" }}>🎮</span>
+      <div className="d-flex align-items-center gap-3">
+        <div
+          className="icon-chip"
+          style={{
+            background: "linear-gradient(135deg, var(--teal) 0%, var(--violet) 100%)",
+            width: "38px",
+            height: "38px",
+            borderRadius: "12px",
+          }}
+        >
+          <IconGamepad size={20} color="#fff" />
+        </div>
         <div>
-          <span
+          <div
             style={{
+              fontFamily: "var(--font-display)",
               fontWeight: 700,
               fontSize: "16px",
-              color: "#ffffff",
-              letterSpacing: "0.5px",
+              color: "#fff",
+              letterSpacing: "-0.2px",
             }}
           >
             Game Performance Copilot
-          </span>
-          <span
-            style={{
-              fontSize: "11px",
-              color: "#888",
-              marginLeft: "10px",
-            }}
-          >
+          </div>
+          <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
             RTX 3050 Ti · i7-12650H · 16GB RAM
-          </span>
+          </div>
         </div>
       </div>
 
       {/* Right — API status + model badge + auth */}
       <div className="d-flex align-items-center gap-3">
-        {/* Model badge */}
         {modelName && (
           <span
+            className="pill"
             style={{
-              fontSize: "11px",
-              backgroundColor: "#6f42c1",
+              background: "linear-gradient(135deg, var(--violet) 0%, var(--violet-2) 100%)",
               color: "#fff",
-              padding: "3px 10px",
-              borderRadius: "12px",
-              fontWeight: 600,
             }}
           >
             {modelName}
           </span>
         )}
 
-        {/* API status dot */}
-        <div className="d-flex align-items-center gap-2">
-          <div
+        <span
+          className="pill"
+          style={{
+            background: `${statusColor}22`,
+            color: statusColor,
+          }}
+        >
+          <span
+            className={apiStatus === "online" ? "hud-live-dot" : ""}
             style={{
-              width: "8px",
-              height: "8px",
+              width: "6px",
+              height: "6px",
               borderRadius: "50%",
               backgroundColor: statusColor,
-              boxShadow: `0 0 6px ${statusColor}`,
             }}
           />
-          <span style={{ fontSize: "12px", color: "#aaa" }}>
-            {statusLabel}
-          </span>
-        </div>
+          {statusLabel}
+        </span>
 
-        {/* Phase 8: user + logout */}
         {isAuthenticated && (
           <div className="d-flex align-items-center gap-2">
-            <span style={{ fontSize: "12px", color: "#888" }}>
-              👤 {username}
+            <span
+              className="pill"
+              style={{ background: "rgba(255,255,255,0.06)", color: "var(--text-muted)" }}
+            >
+              <IconUser size={12} /> {username}
             </span>
             <button
               onClick={logout}
               style={{
-                backgroundColor: "#22252e",
-                border: "1px solid #2a2d35",
-                color: "#888",
+                background: "rgba(255,255,255,0.06)",
+                border: "1px solid var(--border)",
+                color: "var(--text-muted)",
                 fontSize: "11px",
-                padding: "4px 10px",
-                borderRadius: "6px",
+                fontWeight: 600,
+                padding: "6px 14px",
+                borderRadius: "999px",
                 cursor: "pointer",
               }}
             >
