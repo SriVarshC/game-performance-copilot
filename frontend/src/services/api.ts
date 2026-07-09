@@ -14,6 +14,7 @@ import type {
   RegisterRequest,
   LoginRequest,
   TokenResponse,
+  PerformanceSummary,
 } from "../types";
 
 const api = axios.create({
@@ -166,4 +167,12 @@ export const getPredictionsHistory = async (
 ): Promise<PredictionHistoryResponse> => {
   const res = await api.get("/predictions/history", { params: { limit } });
   return res.data as PredictionHistoryResponse;
+};
+
+// ─── Performance (Phase 11) ───────────────────────────────────────────────────
+export const getPerformanceSummary = async (
+  hours = 24
+): Promise<PerformanceSummary> => {
+  const res = await api.get("/performance/summary", { params: { hours } });
+  return res.data as PerformanceSummary;
 };

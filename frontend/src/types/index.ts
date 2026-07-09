@@ -79,8 +79,8 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   timestamp: string;
-  interactionId?: number;      // ties assistant messages to their DB row for feedback
-  feedbackGiven?: boolean;     // tracks whether user already voted, to disable buttons after
+  interactionId?: number;
+  feedbackGiven?: boolean;
 }
 
 export interface LLMRequest {
@@ -161,6 +161,24 @@ export interface TokenResponse {
   token_type: string;
   username: string;
   user_id: number;
+}
+
+// ─── Performance (Phase 11) ──────────────────────────────────────────────────
+export interface PerformanceEndpoint {
+  endpoint: string;
+  count:    number;
+  avg_ms:   number;
+  max_ms:   number;
+}
+
+export interface PerformanceSummary {
+  status:          string;
+  window_hours:    number;
+  total_requests:  number;
+  avg_duration_ms: number;
+  error_count:     number;
+  error_rate_pct:  number;
+  by_endpoint:     PerformanceEndpoint[];
 }
 
 // ─── UI helpers ─────────────────────────────────────────────────────────────

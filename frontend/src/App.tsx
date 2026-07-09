@@ -1,17 +1,19 @@
 // ═══════════════════════════════════════════════════════════
 // Game Performance Copilot — App Router
 // Phase 8 — adds AuthProvider + Login + ProtectedRoute
+// Phase 11 — adds Performance monitoring page
 // ═══════════════════════════════════════════════════════════
 
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import "bootstrap/dist/css/bootstrap.min.css";
 
 // Pages
-import Dashboard  from "./pages/Dashboard";
-import Analytics  from "./pages/Analytics";
-import Prediction from "./pages/Prediction";
-import Copilot    from "./pages/Copilot";
-import Login      from "./pages/Login";
+import Dashboard    from "./pages/Dashboard";
+import Analytics    from "./pages/Analytics";
+import Prediction   from "./pages/Prediction";
+import Copilot      from "./pages/Copilot";
+import Login        from "./pages/Login";
+import Performance  from "./pages/Performance";
 
 // Layout
 import Navbar  from "./components/Navbar";
@@ -51,6 +53,9 @@ function AppShell() {
             } />
             <Route path="/copilot" element={
               <ProtectedRoute><Copilot /></ProtectedRoute>
+            } />
+            <Route path="/performance" element={
+              <ProtectedRoute><Performance /></ProtectedRoute>
             } />
 
             {/* Catch-all → redirect to dashboard (which itself redirects to

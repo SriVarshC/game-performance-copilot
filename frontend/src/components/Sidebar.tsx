@@ -11,10 +11,11 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { path: "/",           icon: "📊", label: "Dashboard"  },
-  { path: "/analytics",  icon: "🔍", label: "Analytics"  },
-  { path: "/prediction", icon: "🎯", label: "Prediction" },
-  { path: "/copilot",    icon: "🤖", label: "Copilot"    },
+  { path: "/",            icon: "📊", label: "Dashboard"    },
+  { path: "/analytics",   icon: "🔍", label: "Analytics"    },
+  { path: "/prediction",  icon: "🎯", label: "Prediction"   },
+  { path: "/copilot",     icon: "🤖", label: "Copilot"      },
+  { path: "/performance", icon: "⚡", label: "Performance"  },
 ];
 
 function Sidebar() {
@@ -83,7 +84,7 @@ function Sidebar() {
           borderTop: "1px solid #2a2d35",
         }}
       >
-        <div>v3.0.0 · Phase 6</div>
+        <div>v3.0.0 · Phase 11</div>
         <div style={{ marginTop: "4px" }}>Sri Varsh C</div>
         <div>UMass Amherst DACSS</div>
       </div>
