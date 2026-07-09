@@ -116,4 +116,15 @@ class ErrorLog(Base):
     error_type    = Column(String, nullable=True)
     error_message = Column(String, nullable=True)
     traceback     = Column(String, nullable=True)
-    created_at    = Column(DateTime, default=datetime.datetime.utcnow)    
+    created_at    = Column(DateTime, default=datetime.datetime.utcnow)   
+
+class RequestLog(Base):
+    __tablename__ = "request_logs"
+
+    id           = Column(Integer, primary_key=True, index=True)
+    user_id      = Column(Integer, ForeignKey("users.user_id"), nullable=True, index=True)
+    endpoint     = Column(String, nullable=True, index=True)
+    method       = Column(String, nullable=True)
+    status_code  = Column(Integer, nullable=True)
+    duration_ms  = Column(Float, nullable=True)
+    created_at   = Column(DateTime, default=datetime.datetime.utcnow, index=True) 

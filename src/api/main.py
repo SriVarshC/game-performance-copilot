@@ -1,3 +1,4 @@
+import time
 import traceback
 
 from fastapi import FastAPI, Request
@@ -9,7 +10,7 @@ from pathlib import Path
 load_dotenv()
 
 from src.database.connection import init_db, SessionLocal
-from src.database.models import ErrorLog
+from src.database.models import ErrorLog, RequestLog
 from src.auth.security import decode_access_token
 from src.api.routes import telemetry, predict, recommend, feedback, analytics, auth
 
@@ -39,11 +40,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ─── Phase 11: global exception handler ─────────────────────────────────────
+
+# ─── Shared helper: best-effort user extraction from Bearer token ───────────
 def _extract_user_id(request: Request):
     """Best-effort: pull user_id from a valid Bearer token if present.
-    Returns None if missing/invalid — logging an error should never itself
-    fail just because auth context isn't available."""
+    Returns None if missing/invalid — logging should never itself fail
+    just because auth context isn't available."""
     try:
         auth_header = request.headers.get("authorization", "")
         if not auth_header.lower().startswith("bearer "):
@@ -57,6 +59,35 @@ def _extract_user_id(request: Request):
         return None
 
 
+# ─── Phase 11: request timing middleware ────────────────────────────────────
+@app.middleware("http")
+async def timing_middleware(request: Request, call_next):
+    start = time.time()
+    response = await call_next(request)
+    duration_ms = (time.time() - start) * 1000
+
+    # Log every request — wrapped so logging itself never breaks the response
+    try:
+        db = SessionLocal()
+        try:
+            log_row = RequestLog(
+                user_id=_extract_user_id(request),
+                endpoint=str(request.url.path),
+                method=request.method,
+                status_code=response.status_code,
+                duration_ms=round(duration_ms, 2),
+            )
+            db.add(log_row)
+            db.commit()
+        finally:
+            db.close()
+    except Exception as log_err:
+        print(f"[timing_middleware] Failed to log request: {log_err}")
+
+    return response
+
+
+# ─── Phase 11: global exception handler ─────────────────────────────────────
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     # Log to error_logs table — wrapped in its own try/except so a DB
@@ -118,8 +149,6 @@ def health_check():
         "model_name": "LightGBM" if model_loaded else "not loaded",
     }
 
-
-
 # ─── ROUTERS ─────────────────────────────────────────────────────────────────
 # auth router is public (register/login must work without a token already)
 app.include_router(auth.router,       prefix="/api", tags=["Auth"])
@@ -133,6 +162,9 @@ app.include_router(analytics.router,  prefix="/api", tags=["Analytics"])
 
 from src.api.routes import errors
 app.include_router(errors.router,     prefix="/api", tags=["Errors"])
+
+from src.api.routes import performance
+app.include_router(performance.router, prefix="/api", tags=["Performance"])
 
 if LLM_AVAILABLE:
     app.include_router(llm.router, prefix="/api", tags=["LLM"])
