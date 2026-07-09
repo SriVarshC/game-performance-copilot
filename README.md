@@ -1,172 +1,133 @@
 # 🎮 Game Performance Copilot
 
-An end-to-end AI system that helps PC gamers diagnose, predict, and optimize game performance in real time using machine learning, live hardware telemetry, and a natural language LLM assistant.
+An end-to-end AI system that helps PC gamers diagnose, predict, and optimize game performance in real time — combining machine learning, live hardware telemetry, a retrieval-augmented local LLM assistant, and full multi-user authentication.
+
+![CI](https://github.com/SriVarshC/game-performance-copilot/actions/workflows/test.yml/badge.svg)
 
 ---
 
 ## 🚀 What It Does
 
-Current tools like MSI Afterburner show raw numbers but never explain **why** performance is bad. Game Performance Copilot:
+Tools like MSI Afterburner show raw numbers but never explain **why** performance is bad. Game Performance Copilot:
 
-- **Collects** live GPU/CPU/RAM telemetry every 2 seconds
-- **Diagnoses** 7 types of hardware bottlenecks automatically (GPU-bound, CPU-bound, VRAM pressure, thermal throttling, and more)
-- **Predicts** FPS using a LightGBM model (R²=97.5%, MAE=7.8 FPS)
-- **Recommends** ranked optimizations with estimated FPS gain per action
-- **Answers** natural language questions about your hardware via an LLM assistant
-- **Learns** from user feedback (thumbs up/down) with a full analytics dashboard
+- **Collects** live GPU/CPU/RAM telemetry continuously
+- **Diagnoses** hardware bottlenecks automatically — GPU-bound, CPU-bound, VRAM pressure, thermal throttling, memory pressure, or balanced
+- **Predicts** FPS, 1%-low FPS, and a composite health score using 4 specialized ML models
+- **Recommends** ranked, severity-labeled optimizations with estimated FPS gain per action
+- **Answers** natural language questions via a local LLM Copilot, grounded in your real-time hardware state through Retrieval-Augmented Generation (RAG)
+- **Learns from its own usage** — helpful Copilot answers are automatically folded back into its knowledge base
+- **Isolates every user's data** — full JWT authentication with per-user data scoping across telemetry, predictions, recommendations, and chat history
+- **Monitors itself** — a full observability layer tracking request performance and errors in real time
 
 ---
 
 ## 🏗️ Architecture
 
 ```
-Hardware (GPU/CPU/RAM)
-        │
-        ▼
-TelemetryCollector (pynvml + psutil)
-        │
-        ├──▶ DiagnosticsEngine (7 bottleneck detectors)
-        │
-        ├──▶ FPSPredictor (LightGBM R²=0.9746)
-        │           │
-        │           └──▶ RecommendationEngine (ranked optimizations + FPS gain estimates)
-        │
-        ├──▶ SQLite DB (telemetry + recommendations + feedback)
-        │
-        └──▶ Streamlit Dashboard (9 sections, live refresh)
-                    │
-                    └──▶ FastAPI Backend (8 endpoints)
-                                │
-                                └──▶ Ollama LLM (llama3.2, prompt-injected with live telemetry)
+        React + TypeScript (Vite)
+                  │  JWT / REST
+                  ▼
+          FastAPI Backend
+                  │
+   ┌──────────────┼───────────────────┬─────────────────┐
+   ▼              ▼                   ▼                 ▼
+PostgreSQL      Ollama             LightGBM ×4      FAISS + sentence-
+(users,        (llama3.2,          (FPS / low-FPS /  transformers
+ telemetry,     GPU-accelerated)    bottleneck /       (RAG knowledge
+ predictions,                       health score)       base)
+ recs, chat,
+ errors,
+ requests)
 ```
 
----
-
-## 🧠 ML Model
-
-| Model | R² | MAE (FPS) | RMSE | Accuracy |
-|---|---|---|---|---|
-| **LightGBM ★ BEST** | **0.9746** | **7.825** | **12.348** | **91.64%** |
-| XGBoost | 0.9697 | 8.298 | 13.484 | 91.32% |
-| RandomForest | 0.8924 | 16.105 | 25.404 | 81.34% |
-
-- **Dataset:** 5,000 synthetic gaming sessions based on real hardware benchmark distributions
-- **Split:** 80% train / 20% test
-- **Features:** 20 inputs including game genre, resolution, quality preset, ray tracing, upscaling, GPU/CPU/RAM metrics
-- **Winner:** LightGBM saved as `models/best_model.pkl`
+Deployed as a 5-container Docker Compose stack: backend, frontend (nginx), PostgreSQL, Ollama, pgAdmin — with GPU passthrough configured for both live telemetry collection and LLM inference.
 
 ---
 
-## 🔌 API Endpoints
+## 🧠 Machine Learning
+
+Four specialized LightGBM models, all surfaced from a single `/predict` call:
+
+| Model | Purpose |
+|---|---|
+| FPS Predictor | Best-estimate FPS from game settings + live hardware metrics |
+| 1% Low FPS | Worst-case frame rate estimate |
+| Bottleneck Classifier | GPU / CPU / MEMORY / THERMAL / BALANCED |
+| Health Score | Composite 0–100 system health rating |
+
+The winning FPS model (LightGBM, compared against XGBoost and RandomForest) scores **R²=0.9746, MAE=7.8 FPS** on a 5,000-session synthetic training set spanning 5 genres, 4 resolutions, 5 quality presets, ray tracing on/off, and 4 upscaling modes.
+
+---
+
+## 🤖 AI Copilot (RAG + Self-Improving Knowledge Base)
+
+The Copilot doesn't just call an LLM — it retrieves relevant, vetted context before answering:
+
+- **Local inference** via Ollama (llama3.2), GPU-accelerated, fully offline, no API costs
+- **Retrieval-Augmented Generation** — a FAISS vector index over curated hardware/optimization knowledge, embedded locally with `sentence-transformers`
+- **Live telemetry injection** — answers can be grounded in your actual current GPU/CPU/RAM state
+- **Self-improving loop** — every answer can be rated helpful/not helpful; helpful, general-purpose answers are automatically embedded and folded back into the knowledge base, so the Copilot's knowledge grows from real usage over time
+
+---
+
+## 🔐 Authentication & Multi-User Isolation
+
+- JWT-based auth (register/login), password hashing via `pbkdf2_sha256`
+- **Every** piece of user-generated data — telemetry, predictions, recommendations, chat history — is scoped to the authenticated user via database-level foreign keys and query filtering
+- Verified with real multi-account testing, not just code review
+
+---
+
+## 📊 Observability
+
+- **Global exception handling** — every unhandled error across the entire API is caught centrally, logged with full context (endpoint, user, traceback), and never leaks internals to the client
+- **Request performance monitoring** — every API call is timed and logged; a dedicated dashboard page visualizes average response time and request volume per endpoint, plus live error rates
+
+---
+
+## 🔌 Key API Endpoints
 
 | Endpoint | Method | Description |
 |---|---|---|
-| `/api/health` | GET | API status + model loaded check |
-| `/api/telemetry` | GET | Live GPU/CPU/RAM metrics |
-| `/api/telemetry/diagnostics` | GET | AI bottleneck analysis |
-| `/api/predict` | POST | FPS prediction from game settings + metrics |
-| `/api/recommend` | POST | Ranked optimization recommendations |
-| `/api/llm/ask` | POST | Natural language hardware Q&A (Ollama) |
-| `/api/feedback/{id}` | POST | Submit thumbs up/down on a recommendation |
-| `/api/feedback/summary` | GET | Aggregated feedback analytics |
+| `/api/auth/register`, `/api/auth/login` | POST | Account creation and JWT issuance |
+| `/api/telemetry`, `/api/telemetry/history` | GET | Live and historical hardware metrics |
+| `/api/predict` | POST | 4-model FPS / bottleneck / health prediction |
+| `/api/recommend` | POST | Ranked, severity-labeled optimization suggestions |
+| `/api/llm/ask` | POST | RAG-grounded natural language Copilot |
+| `/api/llm/feedback/{id}` | POST | Rate a Copilot answer (feeds the self-improving loop) |
+| `/api/feedback/{id}`, `/api/feedback/summary` | POST / GET | Recommendation feedback + analytics |
+| `/api/analytics` | GET | Per-user aggregated performance analytics |
+| `/api/errors` | GET | Recent application errors |
+| `/api/performance/summary` | GET | Request timing & volume analytics |
 
-Swagger UI: `http://localhost:8000/docs`
-
----
-
-## 🧪 Tests
-
-```
-pytest tests/ -v
-```
-
-| File | Tests | Covers |
-|---|---|---|
-| `test_health.py` | 5 | API health, model loaded, version |
-| `test_predict.py` | 7 | FPS prediction, frame time, performance tier |
-| `test_recommend.py` | 7 | Recommendations count, fields, status |
-| `test_feedback.py` | 9 | Feedback submission, summary stats, IDs |
-| **Total** | **28** | **All passing ✅** |
-
-CI/CD: GitHub Actions runs all 28 tests on `ubuntu-latest` on every push to `main`.
-
-![CI](https://github.com/SriVarshC/game-performance-copilot/actions/workflows/test.yml/badge.svg)
+Interactive API docs: `http://localhost:8000/docs`
 
 ---
 
-## 🐳 Docker
+## 🧪 Testing & CI/CD
 
+Full pytest suite covering auth, prediction, recommendations, feedback, and analytics, running automatically on every push via GitHub Actions against a real, freshly-provisioned PostgreSQL service container — including running Alembic migrations from scratch, so CI validates the exact same schema path a brand-new deployment would take.
+
+---
+
+## 🐳 Running Locally
+
+**Full stack via Docker Compose:**
 ```bash
-# Build images (one at a time)
-docker build -t game-copilot-api .
-docker build -t game-copilot-dashboard -f Dockerfile.dashboard .
-
-# Run full stack
-docker-compose up
+docker-compose --env-file .env.docker up -d
 ```
+- Frontend: `http://localhost:5173`
+- API: `http://localhost:8000` (docs at `/docs`)
+- pgAdmin: `http://localhost:5050`
 
-- Dashboard: `http://localhost:8501`
-- API: `http://localhost:8000`
-
----
-
-## ⚡ Local Development (Recommended)
-
+**Local development (backend + frontend separately):**
 ```bash
-# Activate virtual environment
-venv\Scripts\activate          # Windows PowerShell
+# Backend
+uvicorn src.api.main:app --reload
 
-# Terminal 1 — FastAPI backend
-uvicorn src.api.main:app --reload --port 8000
-
-# Terminal 2 — Streamlit dashboard
-streamlit run src/dashboard/app.py
-
-# Terminal 3 — Tests / Git
-pytest tests/ -v
+# Frontend
+cd frontend && npm run dev
 ```
-
----
-
-## 📁 Project Structure
-
-```
-game-performance-copilot/
-├── src/
-│   ├── telemetry/collector.py          # GPU/CPU/RAM metrics (pynvml + psutil)
-│   ├── database/db_manager.py          # SQLite manager
-│   ├── diagnostics/engine.py           # 7 bottleneck detectors
-│   ├── ml/
-│   │   ├── dataset_generator.py        # 5000 synthetic training samples
-│   │   ├── trainer.py                  # Trains XGB/LGB/RF, saves best model
-│   │   ├── predictor.py                # LightGBM inference
-│   │   └── recommendation_engine.py    # Ranked optimizations + FPS gain estimates
-│   ├── api/
-│   │   ├── main.py                     # FastAPI app (v2.0.0)
-│   │   └── routes/                     # predict, recommend, telemetry, llm, feedback
-│   ├── dashboard/app.py                # Streamlit dashboard (9 sections)
-│   └── llm/prompt_builder.py           # Telemetry-aware prompt injection
-├── tests/                              # 28 pytest tests
-├── models/                             # Trained model files (best_model.pkl)
-├── data/                               # SQLite database (auto-created)
-├── Dockerfile                          # FastAPI container
-├── Dockerfile.dashboard                # Streamlit container
-├── docker-compose.yml                  # Full stack orchestration
-└── .github/workflows/test.yml          # GitHub Actions CI/CD
-```
-
----
-
-## 🖥️ Hardware Tested On
-
-| Component | Spec |
-|---|---|
-| GPU | NVIDIA GeForce RTX 3050 Ti Laptop (4GB VRAM) |
-| CPU | Intel i7-12650H (10C/16T) |
-| RAM | 16 GB |
-| OS | Windows 11 |
-
-> **Note:** GPU telemetry uses NVIDIA Optimus awareness — the dGPU powers down when idle, which is normal behavior and handled correctly.
 
 ---
 
@@ -174,33 +135,27 @@ game-performance-copilot/
 
 | Layer | Technology |
 |---|---|
-| Hardware Metrics | pynvml, psutil |
-| ML Models | LightGBM, XGBoost, scikit-learn |
-| Backend API | FastAPI, Uvicorn |
-| Database | SQLite, SQLAlchemy |
-| Dashboard | Streamlit, Plotly |
-| LLM Assistant | Ollama, llama3.2 |
-| Testing | pytest |
-| DevOps | Docker, GitHub Actions |
-| Language | Python 3.12 |
+| Frontend | React, TypeScript, Vite, React Router, ECharts |
+| Backend | FastAPI, Pydantic, Uvicorn |
+| Database | PostgreSQL, SQLAlchemy 2.0, Alembic |
+| ML | LightGBM, XGBoost, RandomForest, scikit-learn |
+| LLM / RAG | Ollama (llama3.2), FAISS, sentence-transformers |
+| Auth | JWT (python-jose), pbkdf2_sha256 |
+| Infra | Docker, Docker Compose, nginx |
+| CI/CD | GitHub Actions, pytest |
 
 ---
 
-## 📈 Phases Completed
+## 🖥️ Reference Hardware
 
-| Phase | What Was Built | Status |
-|---|---|---|
-| 1 | Live telemetry collection + Streamlit dashboard | ✅ Complete |
-| 2 | ML FPS prediction (LightGBM) + recommendation engine | ✅ Complete |
-| 3 | FastAPI REST backend (8 endpoints + Swagger) | ✅ Complete |
-| 4 | LLM assistant (Ollama + llama3.2 + prompt engineering) | ✅ Complete |
-| 5 | Docker + docker-compose + GitHub Actions CI/CD (28 tests) | ✅ Complete |
-| 6 | User feedback loop (👍/👎 + analytics dashboard) | ✅ Complete |
+Developed and tuned against an NVIDIA RTX 3050 Ti Laptop GPU (4GB VRAM), Intel i7-12650H (10C/16T), 16GB RAM, Windows 11 — including working around real hardware quirks like NVIDIA Optimus (GPU powers off at idle) and VRAM-constrained local LLM inference (GPU/CPU workload splitting, resolved by tuning the model's context window to fit entirely in available VRAM).
 
 ---
 
 ## 👤 Author
 
-**Srivarsh Cirigiri**  
-Master's Student — Data Science   
-University of Massachusetts Amherst | Graduation: May 2027
+**Srivarsh Cirigiri**
+Master's Student, Data Analytics and Computational Social Science (DACSS)
+University of Massachusetts Amherst | Graduating May 2027
+
+[GitHub](https://github.com/SriVarshC) · [Repo](https://github.com/SriVarshC/game-performance-copilot)
