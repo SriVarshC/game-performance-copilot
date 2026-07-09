@@ -24,6 +24,8 @@ services:
     restart: unless-stopped
     ports:
       - "11434:11434"
+    environment:
+      OLLAMA_CONTEXT_LENGTH: "2048"
     volumes:
       - ollama_data:/root/.ollama
     # GPU passthrough — without this, Ollama runs llama3.2 on CPU only
