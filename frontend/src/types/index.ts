@@ -79,6 +79,8 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   timestamp: string;
+  interactionId?: number;      // ties assistant messages to their DB row for feedback
+  feedbackGiven?: boolean;     // tracks whether user already voted, to disable buttons after
 }
 
 export interface LLMRequest {
@@ -94,6 +96,7 @@ export interface LLMResponse {
   issues_detected?: number;
   knowledge_sources?: string[];
   response_time_seconds?: number;
+  interaction_id?: number;
 }
 
 // ─── Analytics ──────────────────────────────────────────────────────────────

@@ -4,7 +4,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { useState, useRef, useEffect } from "react";
-import { postLLMQuestion, getTelemetry } from "../services/api";
+import { postLLMQuestion, getTelemetry, postCopilotFeedback } from "../services/api";
 import type { ChatMessage, TelemetryData } from "../types";
 
 // ── Suggested starter questions ──────────────────────────────
@@ -73,9 +73,10 @@ function Copilot() {
       });
 
       const assistantMsg: ChatMessage = {
-        role:      "assistant",
-        content:   res.answer,
-        timestamp: new Date().toISOString(),
+        role:          "assistant",
+        content:       res.answer,
+        timestamp:     new Date().toISOString(),
+        interactionId: res.interaction_id,
       };
       setMessages((m) => [...m, assistantMsg]);
     } catch {
@@ -89,6 +90,23 @@ function Copilot() {
       ]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // ── Handle feedback click ─────────────────────────────────
+  const handleFeedback = async (idx: number, wasHelpful: boolean) => {
+    const msg = messages[idx];
+    if (!msg.interactionId || msg.feedbackGiven) return;
+
+    try {
+      await postCopilotFeedback(msg.interactionId, wasHelpful);
+      setMessages((m) =>
+        m.map((item, i) =>
+          i === idx ? { ...item, feedbackGiven: true } : item
+        )
+      );
+    } catch {
+      // silently fail — non-critical
     }
   };
 
@@ -242,6 +260,51 @@ function Copilot() {
             }}>
               {msg.content}
             </div>
+
+            {/* Feedback buttons — only on assistant messages that have an interactionId */}
+            {msg.role === "assistant" && msg.interactionId && (
+              <div style={{ display: "flex", gap: "6px", paddingLeft: "4px" }}>
+                <button
+                  onClick={() => handleFeedback(idx, true)}
+                  disabled={msg.feedbackGiven}
+                  title="Helpful"
+                  style={{
+                    background: "none",
+                    border: "1px solid #2a2d35",
+                    borderRadius: "6px",
+                    padding: "2px 8px",
+                    fontSize: "12px",
+                    cursor: msg.feedbackGiven ? "default" : "pointer",
+                    opacity: msg.feedbackGiven ? 0.4 : 1,
+                    color: "#888",
+                  }}
+                >
+                  👍
+                </button>
+                <button
+                  onClick={() => handleFeedback(idx, false)}
+                  disabled={msg.feedbackGiven}
+                  title="Not helpful"
+                  style={{
+                    background: "none",
+                    border: "1px solid #2a2d35",
+                    borderRadius: "6px",
+                    padding: "2px 8px",
+                    fontSize: "12px",
+                    cursor: msg.feedbackGiven ? "default" : "pointer",
+                    opacity: msg.feedbackGiven ? 0.4 : 1,
+                    color: "#888",
+                  }}
+                >
+                  👎
+                </button>
+                {msg.feedbackGiven && (
+                  <span style={{ fontSize: "10px", color: "#555", alignSelf: "center" }}>
+                    Thanks for the feedback!
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         ))}
 

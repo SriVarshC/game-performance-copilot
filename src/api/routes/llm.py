@@ -9,6 +9,10 @@ semantic search, grounding answers in vetted, hardware-specific
 guidance rather than the LLM's general training knowledge alone.
 
 Phase 8: Requires a logged-in user.
+
+Phase 10: Logs every interaction to PostgreSQL. General (non-telemetry)
+answers marked helpful by the user become eligible to be folded back
+into the FAISS knowledge base via reindex_from_feedback.py.
 """
 
 import time
@@ -16,8 +20,10 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
-from src.database.models import User
+from src.database.models import User, CopilotInteraction
+from src.database.connection import get_db
 from src.api.dependencies import get_current_user
 
 router = APIRouter()
@@ -52,6 +58,11 @@ class AskResponse(BaseModel):
     issues_detected:        int
     knowledge_sources:      list[str]
     response_time_seconds:  float
+    interaction_id:         Optional[int] = None
+
+
+class CopilotFeedbackRequest(BaseModel):
+    was_helpful: bool
 
 
 # ── Endpoint ──────────────────────────────────────────────────────────────────
@@ -76,6 +87,7 @@ class AskResponse(BaseModel):
 )
 def ask_llm(
     request: AskRequest,
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     start_time = time.time()
@@ -168,6 +180,23 @@ def ask_llm(
 
     elapsed = round(time.time() - start_time, 2)
 
+    # ── Step 5: Log interaction to PostgreSQL (non-fatal if it fails) ─────────
+    interaction_id = None
+    try:
+        interaction = CopilotInteraction(
+            user_id=current_user.user_id,
+            question=request.question,
+            answer=answer,
+            telemetry_included=(metrics is not None),
+        )
+        db.add(interaction)
+        db.commit()
+        db.refresh(interaction)
+        interaction_id = interaction.id
+    except Exception as e:
+        db.rollback()
+        print(f"[LLM] Warning: failed to log interaction. {e}")
+
     return AskResponse(
         answer=answer,
         model=MODEL_NAME,
@@ -176,4 +205,39 @@ def ask_llm(
         issues_detected=len(issues),
         knowledge_sources=list({d["source"] for d in retrieved_docs}),
         response_time_seconds=elapsed,
+        interaction_id=interaction_id,
     )
+
+
+@router.post(
+    "/llm/feedback/{interaction_id}",
+    summary="Submit Copilot Answer Feedback",
+)
+def submit_copilot_feedback(
+    interaction_id: int,
+    body: CopilotFeedbackRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    interaction = (
+        db.query(CopilotInteraction)
+        .filter(CopilotInteraction.id == interaction_id)
+        .filter(CopilotInteraction.user_id == current_user.user_id)
+        .first()
+    )
+
+    if not interaction:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Interaction {interaction_id} not found"
+        )
+
+    interaction.was_helpful = body.was_helpful
+    db.commit()
+
+    return {
+        "status":      "success",
+        "message":     "Feedback recorded — thank you!",
+        "id":          interaction_id,
+        "was_helpful": body.was_helpful,
+    }

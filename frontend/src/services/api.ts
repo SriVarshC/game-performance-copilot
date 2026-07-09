@@ -134,6 +134,14 @@ export const getFeedbackSummary = async (): Promise<FeedbackSummary> => {
   return res.data as FeedbackSummary;
 };
 
+// ─── Copilot Feedback ────────────────────────────────────────────────────────
+export const postCopilotFeedback = async (
+  interactionId: number,
+  wasHelpful: boolean
+): Promise<void> => {
+  await api.post(`/llm/feedback/${interactionId}`, { was_helpful: wasHelpful });
+};
+
 // ─── Analytics ───────────────────────────────────────────────────────────────
 export const getAnalytics = async (): Promise<AnalyticsData> => {
   const res = await api.get("/analytics");

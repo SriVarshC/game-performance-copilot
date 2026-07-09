@@ -91,3 +91,16 @@ class Recommendation(Base):
     created_at         = Column(DateTime, default=datetime.datetime.utcnow)
 
     prediction = relationship("Prediction", back_populates="recommendations")
+
+
+class CopilotInteraction(Base):
+    __tablename__ = "copilot_interactions"
+
+    id                  = Column(Integer, primary_key=True, index=True)
+    user_id             = Column(Integer, ForeignKey("users.user_id"), nullable=True, index=True)
+    question            = Column(String, nullable=False)
+    answer              = Column(String, nullable=False)
+    telemetry_included  = Column(Boolean, default=False)
+    was_helpful         = Column(Boolean, nullable=True)
+    folded_into_kb      = Column(Boolean, default=False)
+    created_at          = Column(DateTime, default=datetime.datetime.utcnow)
