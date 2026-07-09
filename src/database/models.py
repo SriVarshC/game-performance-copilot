@@ -104,3 +104,16 @@ class CopilotInteraction(Base):
     was_helpful         = Column(Boolean, nullable=True)
     folded_into_kb      = Column(Boolean, default=False)
     created_at          = Column(DateTime, default=datetime.datetime.utcnow)
+
+class ErrorLog(Base):
+    __tablename__ = "error_logs"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    user_id       = Column(Integer, ForeignKey("users.user_id"), nullable=True, index=True)
+    endpoint      = Column(String, nullable=True)
+    method        = Column(String, nullable=True)
+    status_code   = Column(Integer, nullable=True)
+    error_type    = Column(String, nullable=True)
+    error_message = Column(String, nullable=True)
+    traceback     = Column(String, nullable=True)
+    created_at    = Column(DateTime, default=datetime.datetime.utcnow)    
