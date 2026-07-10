@@ -155,7 +155,7 @@ Developed and tuned against an NVIDIA RTX 3050 Ti Laptop GPU (4GB VRAM), Intel i
 ## 👤 Author
 
 **Srivarsh Cirigiri**
-Master's Student, Data Analytics and Computational Social Science (DACSS)
+Master's Student, Data Science Program
 University of Massachusetts Amherst | Graduating May 2027
 
 [GitHub](https://github.com/SriVarshC) · [Repo](https://github.com/SriVarshC/game-performance-copilot)
