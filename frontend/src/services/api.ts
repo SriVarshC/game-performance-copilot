@@ -83,6 +83,10 @@ export const getTelemetry = async (): Promise<TelemetryData> => {
   return (res.data?.data as TelemetryData) ?? (res.data as TelemetryData);
 };
 
+// Backend returns { history: [{fps, timestamp, cpu_usage, ...}, ...], count }
+// — an array of per-reading objects. The frontend's TelemetryHistory type
+// expects parallel arrays instead ({timestamps: [], fps: [], ...}), so we
+// transform the shape here rather than changing every chart consumer.
 export const getTelemetryHistory = async (
   hours = 1,
   limit = 60
@@ -90,7 +94,17 @@ export const getTelemetryHistory = async (
   const res = await api.get("/telemetry/history", {
     params: { hours, limit },
   });
-  return (res.data?.data as TelemetryHistory) ?? (res.data as TelemetryHistory);
+
+  const raw = res.data?.data ?? res.data;
+  const rows: any[] = raw?.history ?? [];
+
+  return {
+    timestamps: rows.map((r) => r.timestamp),
+    fps:        rows.map((r) => r.fps ?? 0),
+    cpu_usage:  rows.map((r) => r.cpu_usage ?? 0),
+    gpu_usage:  rows.map((r) => r.gpu_usage ?? 0),
+    ram_usage:  rows.map((r) => r.ram_usage ?? 0),
+  };
 };
 
 export const getTelemetryDiagnostics = async () => {
