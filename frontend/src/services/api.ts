@@ -139,9 +139,9 @@ export const postLLMQuestion = async (
 // ─── Feedback ────────────────────────────────────────────────────────────────
 export const postFeedback = async (
   id: number,
-  helpful: boolean
+  wasHelpful: boolean
 ): Promise<void> => {
-  await api.post(`/feedback/${id}`, { helpful });
+  await api.post(`/feedback/${id}`, { was_helpful: wasHelpful });
 };
 
 export const getFeedbackSummary = async (): Promise<FeedbackSummary> => {

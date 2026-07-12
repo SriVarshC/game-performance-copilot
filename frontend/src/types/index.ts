@@ -28,8 +28,8 @@ export interface PredictionRequest {
   gpu_temp:    number;
   resolution:  string;
   game_genre:  string;
-  preset:      string;    // matches form: low/medium/high/ultra
-  upscaling:   string;    // matches form: none/dlss_quality/fsr_quality/…
+  preset:      string;
+  upscaling:   string;
   ray_tracing: boolean;
 }
 
@@ -46,32 +46,49 @@ export interface PredictionResult {
 
 // ─── Recommendations ────────────────────────────────────────────────────────
 export interface Recommendation {
-  title: string;
-  description: string;
-  category: string;
-  icon: string;
-  estimated_gain: number;
-  difficulty: string;
-  severity?: string;
+  id?:                 number;
+  action:              string;
+  category:            string;
+  icon:                string;
+  estimated_fps_gain:  number;
+  severity:            string;
+  description:         string;
+  difficulty:          string;
+  was_helpful?:        boolean;
+}
+
+export interface RecommendHardwareMetrics {
+  gpu_utilization:   number;
+  vram_used_mb:      number;
+  vram_utilization:  number;
+  cpu_utilization:   number;
+  ram_utilization:   number;
+  gpu_temperature:   number;
+  gpu_clock_mhz:     number;
+  gpu_power_watts:   number;
 }
 
 export interface RecommendRequest {
-  cpu_usage: number;
-  gpu_usage: number;
-  ram_usage: number;
-  vram_usage: number;
-  fps: number;
-  resolution: string;
-  game_genre: string;
-  graphics_preset: string;
-  upscaling_enabled: boolean;
-  ray_tracing_enabled: boolean;
-  issues?: Array<{ issue_type: string; value?: number }>;
+  game_genre:   string;
+  resolution:   string;
+  preset:       string;
+  ray_tracing:  number;  // 0 or 1
+  upscaling:    string;
+  metrics?:     RecommendHardwareMetrics;
+  diagnostics?: Array<{ issue_type: string; value?: number }>;
 }
 
 export interface RecommendResponse {
+  status:         string;
+  game_settings: {
+    game_genre:  string;
+    resolution:  string;
+    preset:      string;
+    ray_tracing: number;
+    upscaling:   string;
+  };
+  count:           number;
   recommendations: Recommendation[];
-  total: number;
 }
 
 // ─── LLM / Copilot ──────────────────────────────────────────────────────────

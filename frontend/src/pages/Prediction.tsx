@@ -1,15 +1,15 @@
 // ═══════════════════════════════════════════════════════════
-// Prediction — FPS prediction form + results
-// Calls POST /api/predict with game settings
+// Prediction — FPS prediction form + results + recommendations
+// Calls POST /api/predict and POST /api/recommend
 // ═══════════════════════════════════════════════════════════
 
 import { useState } from "react";
 import ReactECharts from "echarts-for-react";
-import { postPredict } from "../services/api";
-import type { PredictionRequest, PredictionResult } from "../types";
-import { TIER_COLORS } from "../types";
+import { postPredict, postRecommend, postFeedback } from "../services/api";
+import type { PredictionRequest, PredictionResult, RecommendRequest, Recommendation } from "../types";
+import { TIER_COLORS, SEVERITY_COLORS } from "../types";
 import MetricCard from "../components/MetricCard";
-import { IconTarget, IconGamepad, IconTrend } from "../icons";
+import { IconTarget, IconGamepad, IconTrend, IconThumbsUp, IconThumbsDown } from "../icons";
 
 const GENRES = [
   "fps_shooter", "battle_royale", "open_world_rpg",
@@ -46,6 +46,12 @@ function Prediction() {
   const [heatmapLoading, setHeatmapLoading] = useState(false);
   const [heatmapError,   setHeatmapError]   = useState<string | null>(null);
 
+  // ── Recommendations state ──────────────────────────────────
+  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [recLoading, setRecLoading]           = useState(false);
+  const [recError, setRecError]               = useState<string | null>(null);
+  const [recFeedback, setRecFeedback]         = useState<Record<number, boolean>>({});
+
   const handleNumber = (key: keyof PredictionRequest, val: string) => {
     setForm((f) => ({ ...f, [key]: val === "" ? 0 : parseFloat(val) }));
   };
@@ -61,6 +67,8 @@ function Prediction() {
     setLoading(true);
     setError(null);
     setResult(null);
+    setRecommendations([]);
+    setRecFeedback({});
 
     try {
       const data = await postPredict(form);
@@ -69,6 +77,48 @@ function Prediction() {
       setError(err?.response?.data?.detail ?? "Prediction failed — is FastAPI running on port 8000?");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // ── Get Recommendations ─────────────────────────────────────
+  const handleGetRecommendations = async () => {
+    setRecLoading(true);
+    setRecError(null);
+
+    try {
+      const payload: RecommendRequest = {
+        game_genre:  form.game_genre,
+        resolution:  form.resolution,
+        preset:      form.preset,
+        ray_tracing: form.ray_tracing ? 1 : 0,
+        upscaling:   form.upscaling,
+        metrics: {
+          gpu_utilization:  form.gpu_usage,
+          vram_used_mb:     form.vram_usage * 40.96, // rough % → MB for a 4GB card
+          vram_utilization: form.vram_usage,
+          cpu_utilization:  form.cpu_usage,
+          ram_utilization:  form.ram_usage,
+          gpu_temperature:  form.gpu_temp,
+          gpu_clock_mhz:    0,
+          gpu_power_watts:  0,
+        },
+      };
+      const res = await postRecommend(payload);
+      setRecommendations(res.recommendations);
+    } catch (err: any) {
+      setRecError(err?.response?.data?.detail ?? "Failed to generate recommendations — is FastAPI running on port 8000?");
+    } finally {
+      setRecLoading(false);
+    }
+  };
+
+  const handleRecFeedback = async (rec: Recommendation, wasHelpful: boolean) => {
+    if (!rec.id || recFeedback[rec.id] !== undefined) return;
+    try {
+      await postFeedback(rec.id, wasHelpful);
+      setRecFeedback((f) => ({ ...f, [rec.id!]: wasHelpful }));
+    } catch {
+      // silently fail — non-critical
     }
   };
 
@@ -295,11 +345,34 @@ function Prediction() {
               </div>
             )}
           </div>
+
+          {/* ── Get Recommendations ─────────────────────── */}
+          <div className="glass-card p-3 mt-3">
+            <div className="hud-label mb-2">Optimization Recommendations</div>
+            <div style={{ fontSize: "11px", color: "var(--text-dim)", marginBottom: "10px" }}>
+              Generates ranked, severity-labeled optimization suggestions based on the current game settings and hardware metrics above.
+            </div>
+            <button
+              type="button" onClick={handleGetRecommendations} disabled={recLoading} className="w-100"
+              style={{
+                background: recLoading ? "rgba(255,255,255,0.06)" : "linear-gradient(135deg, var(--violet) 0%, var(--violet-2) 100%)",
+                border: "none", color: "#fff", padding: "9px", borderRadius: "999px",
+                fontWeight: 700, fontSize: "13px", cursor: recLoading ? "not-allowed" : "pointer",
+              }}
+            >
+              {recLoading ? "Generating recommendations..." : "Get Recommendations"}
+            </button>
+            {recError && (
+              <div className="mt-2 p-2" style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "10px", color: "var(--danger)", fontSize: "11px" }}>
+                {recError}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ── Right — Results ─────────────────────────── */}
         <div className="col-12 col-lg-7">
-          {!result && !loading && !heatmapData && (
+          {!result && !loading && !heatmapData && recommendations.length === 0 && (
             <div className="d-flex align-items-center justify-content-center" style={{ height: "100%", minHeight: "300px", color: "var(--text-dim)", fontSize: "14px", flexDirection: "column", gap: "12px" }}>
               <IconTarget size={48} color="var(--text-dim)" />
               <span>Fill in the form and click Predict FPS</span>
@@ -392,9 +465,81 @@ function Prediction() {
           )}
 
           {heatmapData && !heatmapLoading && (
-            <div className="glass-card p-2">
+            <div className="glass-card p-2 mb-3">
               <div className="hud-label" style={{ padding: "10px 10px 0" }}>Resolution × Preset FPS Heatmap</div>
               <ReactECharts option={buildHeatmapOption(heatmapData)} style={{ height: "320px", width: "100%" }} opts={{ renderer: "canvas" }} />
+            </div>
+          )}
+
+          {/* ── Recommendations list ─────────────────────── */}
+          {recLoading && (
+            <div className="d-flex align-items-center justify-content-center" style={{ height: "200px", color: "var(--text-muted)", flexDirection: "column", gap: "12px" }}>
+              <div className="spinner-border" style={{ color: "var(--violet)" }} role="status" />
+              <span>Generating optimization recommendations...</span>
+            </div>
+          )}
+
+          {recommendations.length > 0 && !recLoading && (
+            <div className="d-flex flex-column gap-2">
+              <div className="hud-label mb-1">
+                Optimization Recommendations ({recommendations.length})
+              </div>
+              {recommendations.map((rec, idx) => {
+                const sevColor = SEVERITY_COLORS[rec.severity] ?? "#8A93A6";
+                const voted = rec.id !== undefined ? recFeedback[rec.id] : undefined;
+                return (
+                  <div key={rec.id ?? idx} className="glass-card p-3">
+                    <div className="d-flex align-items-start justify-content-between gap-3 mb-2">
+                      <div className="d-flex align-items-center gap-2">
+                        <span style={{ fontSize: "18px" }}>{rec.icon}</span>
+                        <span style={{ color: "#fff", fontWeight: 700, fontSize: "14px" }}>{rec.action}</span>
+                      </div>
+                      <div className="d-flex align-items-center gap-2">
+                        <span className="pill" style={{ background: sevColor + "22", color: sevColor, fontSize: "10px" }}>
+                          {rec.severity}
+                        </span>
+                        <span className="pill" style={{ background: "rgba(34,197,94,0.15)", color: "var(--success)", fontSize: "10px" }}>
+                          +{rec.estimated_fps_gain.toFixed(1)} FPS
+                        </span>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: "12px", color: "var(--text-muted)", lineHeight: 1.6, marginBottom: "10px" }}>
+                      {rec.description}
+                    </div>
+                    <div className="d-flex align-items-center justify-content-between">
+                      <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>
+                        {rec.category} · {rec.difficulty} difficulty
+                      </span>
+                      {rec.id && (
+                        <div className="d-flex align-items-center gap-2">
+                          <button
+                            onClick={() => handleRecFeedback(rec, true)}
+                            disabled={voted !== undefined}
+                            style={{
+                              background: "rgba(255,255,255,0.04)", border: "1px solid var(--border)", borderRadius: "999px",
+                              padding: "4px 10px", cursor: voted !== undefined ? "default" : "pointer",
+                              opacity: voted !== undefined && voted !== true ? 0.3 : 1, color: "var(--success)",
+                            }}
+                          >
+                            <IconThumbsUp size={12} />
+                          </button>
+                          <button
+                            onClick={() => handleRecFeedback(rec, false)}
+                            disabled={voted !== undefined}
+                            style={{
+                              background: "rgba(255,255,255,0.04)", border: "1px solid var(--border)", borderRadius: "999px",
+                              padding: "4px 10px", cursor: voted !== undefined ? "default" : "pointer",
+                              opacity: voted !== undefined && voted !== false ? 0.3 : 1, color: "var(--danger)",
+                            }}
+                          >
+                            <IconThumbsDown size={12} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
