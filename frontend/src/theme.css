@@ -120,3 +120,14 @@ body {
 .hud-live-dot {
   animation: hud-pulse 1.6s ease-in-out infinite;
 }
+
+/* ── Native select dropdown options — browsers don't reliably inherit
+   CSS variables inside <option> elements, so set explicit colors ── */
+select {
+  color-scheme: dark;
+}
+
+select option {
+  background-color: #12161F;
+  color: #F1F5F9;
+}
